@@ -99,5 +99,10 @@
 
     <p class="note">Lưu ý: Hãy mở trang này bằng <b>Safari</b> trên iPhone để iOS tự nhận diện hồ sơ cấu hình.</p>
   </div>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(function() {});
+    }
+  </script>
 </body>
 </html>

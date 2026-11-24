@@ -1,7 +1,9 @@
-const CACHE_NAME = 'ytplayer-pwa-v1';
+const CACHE_NAME = 'ytplayer-pwa-v2';
 const APP_SHELL = [
   './',
   './index.html',
+  './install.html',
+  './YTPlayer.mobileconfig',
   './manifest.json',
   './icons/apple-touch-icon.png',
   './icons/icon-192.png',
@@ -28,6 +30,18 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.endsWith('.mobileconfig')) {
+    event.respondWith(
+      fetch(event.request)
+        .catch(() => caches.match(event.request))
+        .then((resp) => resp.arrayBuffer())
+        .then((buf) => new Response(buf, {
+          status: 200,
+          headers: { 'Content-Type': 'application/x-apple-aspen-config' }
+        }))
+    );
+    return;
+  }
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request))
   );
