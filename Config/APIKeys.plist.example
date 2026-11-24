@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  APIKeys.plist.example
+  YTPlayer
+
+  HOW TO USE:
+  1. Copy this file: cp Config/APIKeys.plist.example Config/APIKeys.plist
+  2. Replace "YOUR_API_KEY_HERE" with your real YouTube Data API v3 key.
+  3. Add Config/APIKeys.plist to your Xcode project's target (Build Phases → Copy Bundle Resources).
+  4. The file Config/APIKeys.plist is listed in .gitignore — it will NOT be committed.
+  5. Never commit a real API key to version control.
+
+  How to obtain a YouTube Data API v3 key:
+    https://developers.google.com/youtube/v3/getting-started
+-->
+<plist version="1.0">
+<dict>
+    <key>YouTubeAPIKey</key>
+    <string>YOUR_API_KEY_HERE</string>
+</dict>
+</plist>

@@ -1,0 +1,2401 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="theme-color" content="#121214">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="YT Player">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <title>YT Player</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <script>
+    window.addEventListener('error', function(e) {
+      if (e.target && e.target.src && e.target.src.includes('gstatic.com/antigravity')) {
+        var s = document.createElement('script');
+        s.src = 'https://cdn.tailwindcss.com';
+        document.head.appendChild(s);
+      }
+    }, true);
+  </script>
+  <style>
+    :root {
+      --app-bg: #121214;
+      --app-surface: #1a1a1e;
+      --app-surface-2: rgba(255, 255, 255, 0.06);
+      --app-border: rgba(255, 255, 255, 0.1);
+      --app-text: #f4f4f6;
+      --app-muted: #9ca3af;
+    }
+    .light-theme {
+      --app-bg: #f8fafc;
+      --app-surface: #ffffff;
+      --app-surface-2: #f1f5f9;
+      --app-border: #cbd5e1;
+      --app-text: #0f172a;
+      --app-muted: #64748b;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    }
+    .app-bg { background-color: var(--app-bg); color: var(--app-text); }
+    .app-surface { background-color: var(--app-surface); border-color: var(--app-border); }
+    .app-surface-2 { background-color: var(--app-surface-2); border-color: var(--app-border); }
+    .app-border { border-color: var(--app-border); }
+    .app-text { color: var(--app-text); }
+    .app-muted { color: var(--app-muted); }
+
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    .line-clamp-2 {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .wide-mode {
+      max-width: 900px !important;
+      height: 90vh !important;
+      border-radius: 28px !important;
+    }
+
+    /* Full-screen Native Mode when opened on a real iPhone / installed as iOS Home Screen App */
+    body.real-mobile-device {
+      padding: 0 !important;
+      background-color: var(--app-bg) !important;
+      overflow: hidden;
+    }
+    body.real-mobile-device #appShell {
+      max-width: 100vw !important;
+      width: 100vw !important;
+      height: 100dvh !important;
+      max-height: 100dvh !important;
+      border: none !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+    }
+    body.real-mobile-device #simStatusBar,
+    body.real-mobile-device #simHomeBar {
+      display: none !important;
+    }
+    body.real-mobile-device #appHeader {
+      padding-top: env(safe-area-inset-top, 0px);
+      height: calc(2.75rem + env(safe-area-inset-top, 0px));
+    }
+    body.real-mobile-device #playerOverlay {
+      top: 0 !important;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    body.real-mobile-device #bottomTabBar {
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      height: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+    }
+
+    /* Subtle iPhone 13 Glass Frame Sheen */
+    #appShell {
+      box-shadow:
+        0 30px 70px rgba(0, 0, 0, 0.85),
+        0 0 0 1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    }
+
+    /* YouTube Smooth Zoom / Minimize / Expand Sheet Transitions */
+    #playerOverlay {
+      transform-origin: bottom center;
+      will-change: transform, opacity, border-radius;
+      transition:
+        transform 0.44s cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+        border-radius 0.44s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    #playerOverlay.player-closed {
+      transform: translateY(104%) scale(0.88);
+      opacity: 0;
+      border-radius: 38px;
+      pointer-events: none;
+    }
+    #playerOverlay.player-minimized {
+      transform: translateY(calc(100% - 68px)) scale(0.9);
+      opacity: 0;
+      border-radius: 28px;
+      pointer-events: none;
+    }
+    #playerOverlay.player-expanded {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+      border-radius: 0px;
+      pointer-events: auto;
+    }
+    #playerOverlay.dragging {
+      transition: none !important;
+    }
+
+    /* Mini Player entrance animation */
+    #miniPlayerBar {
+      transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.28s ease;
+    }
+    #miniPlayerBar.mini-hidden {
+      transform: translateY(24px) scale(0.96);
+      opacity: 0;
+      pointer-events: none;
+      height: 0;
+      border-top-width: 0;
+      overflow: hidden;
+    }
+    #miniPlayerBar.mini-visible {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+      pointer-events: auto;
+      height: 58px;
+    }
+
+    /* Segmented Capsule with Glowing Red-to-Orange Gradient Border */
+    .mode-pill-track {
+      position: relative;
+      background: rgba(255, 255, 255, 0.045);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: 9999px;
+      padding: 3px;
+      display: inline-grid;
+      grid-template-columns: 1fr 1fr;
+      width: 210px;
+      backdrop-filter: blur(12px);
+    }
+    .light-theme .mode-pill-track {
+      background: #e2e8f0;
+      border-color: #cbd5e1;
+    }
+    .mode-pill-indicator {
+      position: absolute;
+      top: 3px;
+      bottom: 3px;
+      left: 3px;
+      width: calc(50% - 3px);
+      border-radius: 9999px;
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.28) 0%, rgba(249, 115, 22, 0.22) 100%);
+      border: 1px solid rgba(249, 115, 22, 0.75);
+      box-shadow:
+        0 0 16px rgba(239, 68, 68, 0.35),
+        inset 0 0 10px rgba(249, 115, 22, 0.18);
+      transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .mode-pill-indicator.mode-music { transform: translateX(0%); }
+    .mode-pill-indicator.mode-video { transform: translateX(100%); }
+
+    /* Album Art with 20px Rounded Corners & Breathing Motion */
+    .music-art-img {
+      border-radius: 20px;
+      transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.5s ease;
+    }
+    .music-art-playing {
+      transform: scale(1.0);
+      box-shadow: 0 22px 50px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    }
+    .music-art-paused {
+      transform: scale(0.92);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.45);
+    }
+
+    /* Animated Audio Equalizer Wave Bars next to Title */
+    .audio-wave {
+      display: inline-flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 13px;
+      width: 14px;
+      flex-shrink: 0;
+    }
+    .audio-wave span {
+      display: block;
+      width: 2.5px;
+      background: linear-gradient(to top, #ef4444, #fb923c);
+      border-radius: 2px;
+      height: 3px;
+      transition: height 0.2s ease;
+    }
+    .audio-wave.playing span:nth-child(1) { animation: eqBar 0.75s ease-in-out infinite alternate; }
+    .audio-wave.playing span:nth-child(2) { animation: eqBar 0.55s ease-in-out 0.15s infinite alternate; }
+    .audio-wave.playing span:nth-child(3) { animation: eqBar 0.85s ease-in-out 0.3s infinite alternate; }
+    .audio-wave.playing span:nth-child(4) { animation: eqBar 0.65s ease-in-out 0.1s infinite alternate; }
+    @keyframes eqBar {
+      0% { height: 3px; opacity: 0.65; }
+      100% { height: 13px; opacity: 1; }
+    }
+
+    /* Glowing Playhead Timeline & Volume Sliders */
+    input[type="range"].yt-range {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+    }
+    input[type="range"].yt-range::-webkit-slider-runnable-track {
+      height: 3px;
+      border-radius: 999px;
+    }
+    input[type="range"].yt-range::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #ff4d4d;
+      margin-top: -4.5px;
+      box-shadow: 0 0 12px 2px rgba(239, 68, 68, 0.85);
+      transition: transform 0.15s ease;
+    }
+    input[type="range"].yt-range:hover::-webkit-slider-thumb {
+      transform: scale(1.25);
+    }
+    input[type="range"].vol-range::-webkit-slider-thumb {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: #ffffff;
+      margin-top: -4px;
+      box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+    }
+
+    /* Glowing Main Play/Pause Circle */
+    .glow-play-btn {
+      box-shadow:
+        0 0 28px rgba(255, 255, 255, 0.28),
+        0 6px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Faded Expandable Video Description Mask */
+    .desc-collapsed {
+      max-height: 76px;
+      overflow: hidden;
+      -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+      mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+    }
+
+    .yt-card-anim {
+      transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .yt-card-anim:active {
+      transform: scale(0.97);
+    }
+  </style>
+</head>
+<body class="bg-[#09090b] antialiased p-0 m-0 min-h-screen flex items-center justify-center py-2 px-2">
+
+  <!-- iPhone 13 Frame (19.5:9 Aspect Ratio, Classic Notch & Home Indicator) -->
+  <div id="appShell" class="w-full max-w-[380px] h-[780px] max-h-[95vh] bg-[#121214] rounded-[48px] border-[7px] border-[#1f1f23] flex flex-col overflow-hidden relative select-none transition-all duration-300">
+
+    <!-- iPhone 13 Status Bar + Classic Notch -->
+    <div id="simStatusBar" class="h-8 bg-[#0b0b0d] flex items-center justify-between px-6 shrink-0 z-40 text-zinc-200 relative">
+      <div class="flex items-center gap-1.5 z-10">
+        <span class="text-[11px] font-semibold tracking-tight" id="clock">23:34</span>
+        <span id="headerTimerBadge" class="hidden text-[9px] bg-red-600 text-white px-1.5 rounded-full font-mono"></span>
+      </div>
+
+      <!-- Authentic iPhone 13 Notch -->
+      <div class="absolute left-1/2 -translate-x-1/2 top-0 w-[126px] h-[22px] bg-black rounded-b-[16px] flex items-center justify-center gap-2 border-b border-x border-white/[0.04]">
+        <div class="w-9 h-1 bg-zinc-900 rounded-full"></div>
+        <div class="w-2 h-2 rounded-full bg-[#0c1a2e] border border-zinc-800"></div>
+      </div>
+
+      <!-- iOS 15+ Signal, Wi-Fi, Battery & API Dot -->
+      <div class="flex items-center gap-1.5 z-10">
+        <span id="apiDot" title="Trạng thái YouTube API" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+        <!-- Cellular Signal Bars -->
+        <svg class="w-3.5 h-3" fill="currentColor" viewBox="0 0 16 12">
+          <rect x="1" y="8" width="2.2" height="3.5" rx="0.6"/>
+          <rect x="4.5" y="6" width="2.2" height="5.5" rx="0.6"/>
+          <rect x="8" y="3.5" width="2.2" height="8" rx="0.6"/>
+          <rect x="11.5" y="1" width="2.2" height="10.5" rx="0.6"/>
+        </svg>
+        <!-- Wi-Fi -->
+        <svg class="w-3.5 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3C7.5 3 3.4 4.8 0.4 7.7L12 21.5 23.6 7.7C20.6 4.8 16.5 3 12 3z"/></svg>
+        <!-- Battery -->
+        <div class="w-5 h-2.5 border border-zinc-400 rounded-[3px] p-[1px] flex items-center">
+          <div class="w-full h-full bg-white rounded-[1.5px]"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- App Header -->
+    <div class="h-11 border-b app-border flex items-center justify-between px-4 shrink-0 app-bg z-30" id="appHeader">
+      <div class="flex items-center gap-2 cursor-pointer" onclick="switchTab('home')">
+        <div class="w-6 h-6 bg-gradient-to-br from-red-500 to-red-700 rounded-lg flex items-center justify-center shadow-sm">
+          <svg class="w-3.5 h-3.5 text-white fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        </div>
+        <span class="font-semibold tracking-tight text-[15px] app-text">YT Player</span>
+      </div>
+      <div class="flex items-center gap-1 app-muted">
+        <button onclick="toggleWideMode()" title="Mở rộng / Thu gọn khung hình" class="p-1.5 hover:opacity-80 rounded-lg">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+        </button>
+        <button onclick="toggleTheme()" title="Đổi giao diện Sáng/Tối" class="p-1.5 hover:opacity-80 rounded-lg">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        </button>
+        <button onclick="switchTab('search', true)" title="Tìm kiếm" class="p-1.5 hover:opacity-80 rounded-lg">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Scrollable Viewport -->
+    <div class="flex-1 overflow-y-auto no-scrollbar app-bg relative" id="mainContainer">
+
+      <!-- TAB 1: HOME -->
+      <div id="tab-home" class="p-3 space-y-3 pb-20">
+        <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1 text-[11px]" id="homeCategories">
+          <button onclick="selectHomeCategory('trending', this)" class="home-cat-btn px-3 py-1 bg-red-600 text-white font-medium rounded-full shrink-0 transition">Thịnh hành VN</button>
+          <button onclick="selectHomeCategory('Quốc Thiên SKYNote Live Concert', this)" class="home-cat-btn px-3 py-1 app-surface-2 border app-border app-text rounded-full shrink-0 transition">Live Concert</button>
+          <button onclick="selectHomeCategory('Nhạc trẻ Việt Nam mới nhất', this)" class="home-cat-btn px-3 py-1 app-surface-2 border app-border app-text rounded-full shrink-0 transition">Nhạc Việt</button>
+          <button onclick="selectHomeCategory('Lofi chill hip hop beats', this)" class="home-cat-btn px-3 py-1 app-surface-2 border app-border app-text rounded-full shrink-0 transition">Lofi Chill</button>
+          <button onclick="selectHomeCategory('US UK Pop Hits Official MV', this)" class="home-cat-btn px-3 py-1 app-surface-2 border app-border app-text rounded-full shrink-0 transition">US-UK</button>
+        </div>
+
+        <div id="homeApiBanner" class="hidden rounded-xl p-2.5 border border-amber-500/40 bg-amber-500/10 text-[11px] space-y-1">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold text-amber-400">⚡ Đang hiển thị danh mục chọn lọc</span>
+            <button onclick="switchTab('settings')" class="text-red-400 hover:underline font-medium">Cài đặt API →</button>
+          </div>
+          <p id="homeApiBannerText" class="app-muted leading-snug text-[10px]"></p>
+        </div>
+
+        <div class="flex items-center justify-between px-0.5">
+          <span class="font-bold text-xs tracking-wide uppercase app-text" id="homeSectionTitle">Khám phá thịnh hành</span>
+          <button onclick="loadHomeFeed(true)" class="text-[11px] text-red-400 font-medium hover:underline">Làm mới</button>
+        </div>
+
+        <div id="homeFeedList" class="space-y-4"></div>
+      </div>
+
+      <!-- TAB 2: SEARCH -->
+      <div id="tab-search" class="p-3 space-y-3 pb-20 hidden">
+        <form onsubmit="event.preventDefault(); handleSearch(true);" class="flex gap-1.5 items-center">
+          <div class="flex-1 flex items-center app-surface-2 rounded-full px-3 py-1.5 border app-border focus-within:border-red-500 transition">
+            <svg class="w-4 h-4 app-muted mr-2 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input type="text" id="searchInput" oninput="handleSearch(false)" placeholder="Tìm bài hát, nghệ sĩ hoặc dán link..." class="bg-transparent text-xs app-text placeholder-zinc-500 w-full focus:outline-none">
+            <button type="button" id="clearSearchBtn" onclick="clearSearch()" class="hidden app-muted hover:text-red-500 ml-1 text-xs font-bold px-1">✕</button>
+          </div>
+          <button type="submit" class="bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-3 py-1.5 rounded-full shrink-0 transition">
+            Tìm
+          </button>
+        </form>
+
+        <div class="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5 text-[11px]">
+          <button onclick="quickSearch('Kẻ Say Tình Quốc Thiên')" class="px-2.5 py-1 app-surface-2 hover:opacity-80 app-text rounded-full shrink-0 border app-border">Quốc Thiên</button>
+          <button onclick="quickSearch('Sơn Tùng M-TP')" class="px-2.5 py-1 app-surface-2 hover:opacity-80 app-text rounded-full shrink-0 border app-border">Sơn Tùng M-TP</button>
+          <button onclick="quickSearch('Đen Vâu')" class="px-2.5 py-1 app-surface-2 hover:opacity-80 app-text rounded-full shrink-0 border app-border">Đen Vâu</button>
+          <button onclick="quickSearch('HIEUTHUHAI')" class="px-2.5 py-1 app-surface-2 hover:opacity-80 app-text rounded-full shrink-0 border app-border">HIEUTHUHAI</button>
+          <button onclick="quickSearch('Lofi Girl')" class="px-2.5 py-1 app-surface-2 hover:opacity-80 app-text rounded-full shrink-0 border app-border">Lofi Chill</button>
+        </div>
+
+        <div id="searchResults" class="space-y-2.5 pt-0.5"></div>
+      </div>
+
+      <!-- TAB 3: LIBRARY (Favorites | Playlists | History) -->
+      <div id="tab-library" class="p-3 space-y-3 pb-20 hidden">
+        <div class="grid grid-cols-3 rounded-xl app-surface-2 p-1 text-[11px] font-medium border app-border gap-1">
+          <button onclick="setLibraryTab('fav')" id="btnLibFav" class="py-1.5 rounded-lg bg-red-600 text-white transition">Yêu thích (<span id="favCount">0</span>)</button>
+          <button onclick="setLibraryTab('pl')" id="btnLibPl" class="py-1.5 rounded-lg app-muted transition">Playlist (<span id="plCount">0</span>)</button>
+          <button onclick="setLibraryTab('hist')" id="btnLibHist" class="py-1.5 rounded-lg app-muted transition">Lịch sử (<span id="histCount">0</span>)</button>
+        </div>
+
+        <div id="libHeaderActions" class="hidden flex justify-between items-center">
+          <span id="libSubLabel" class="text-[11px] app-muted"></span>
+          <button onclick="clearWatchHistory()" id="btnClearHist" class="hidden text-[11px] text-red-400 hover:underline font-medium">Xóa toàn bộ lịch sử</button>
+          <button onclick="promptCreateNewPlaylist()" id="btnNewPlLib" class="hidden text-[11px] text-red-400 hover:underline font-medium">+ Tạo Playlist mới</button>
+        </div>
+
+        <div id="libraryList" class="space-y-2 pt-0.5"></div>
+      </div>
+
+      <!-- TAB 4: SETTINGS -->
+      <div id="tab-settings" class="p-3 space-y-3.5 pb-20 hidden text-xs">
+        <div class="app-surface rounded-xl p-3 border app-border space-y-2.5">
+          <div class="flex items-center justify-between">
+            <h4 class="font-bold uppercase tracking-wider text-[10px] app-muted">Kết nối YouTube Data API v3</h4>
+            <span id="settingsApiBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-medium">Đang kiểm tra...</span>
+          </div>
+
+          <input type="text" id="apiKeyInput" placeholder="Dán khóa AIzaSy... của bạn vào đây" class="w-full app-surface-2 border app-border rounded-lg px-2.5 py-1.5 text-[11px] font-mono app-text focus:outline-none focus:border-red-500">
+
+          <div class="flex gap-2">
+            <button onclick="saveAndTestApiKey()" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-1.5 rounded-lg font-medium text-[11px] transition">
+              Lưu & Kiểm tra kết nối
+            </button>
+            <button onclick="resetDefaultApiKey()" title="Khôi phục khóa mặc định" class="px-2.5 py-1.5 app-surface-2 border app-border rounded-lg text-[11px] app-muted hover:opacity-80">
+              Mặc định
+            </button>
+          </div>
+
+          <div id="apiDiagnosticBox" class="rounded-lg p-2 app-surface-2 border app-border text-[10px] leading-relaxed app-muted space-y-1">
+            <p>Nhập khóa YouTube Data API v3 để tìm kiếm toàn bộ kho video YouTube trực tiếp.</p>
+          </div>
+        </div>
+
+        <div class="app-surface rounded-xl p-3 border app-border space-y-2.5">
+          <h4 class="font-bold uppercase tracking-wider text-[10px] app-muted">Giao diện</h4>
+          <div class="flex items-center justify-between">
+            <span class="app-text font-medium">Chế độ tối (Dark Mode #121214)</span>
+            <input type="checkbox" id="darkModeToggle" checked onchange="setTheme(this.checked)" class="w-4 h-4 accent-red-600 cursor-pointer">
+          </div>
+        </div>
+
+        <div class="app-surface rounded-xl p-3 border app-border space-y-2.5">
+          <h4 class="font-bold uppercase tracking-wider text-[10px] app-muted">Hẹn giờ tắt nhạc/video (Sleep Timer)</h4>
+          <div class="flex items-center justify-between gap-2">
+            <select id="sleepMinutesSelect" class="app-surface-2 border app-border rounded-lg px-2.5 py-1.5 text-[11px] app-text focus:outline-none">
+              <option value="1">1 phút (Thử nhanh)</option>
+              <option value="15">15 phút</option>
+              <option value="30" selected>30 phút</option>
+              <option value="45">45 phút</option>
+              <option value="60">60 phút</option>
+            </select>
+            <button onclick="toggleSleepTimer()" id="timerBtn" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg font-medium text-[11px] shrink-0 transition">
+              Bắt đầu hẹn giờ
+            </button>
+          </div>
+          <p id="timerStatusText" class="text-[11px] app-muted">Tự động tạm dừng trình phát khi hết giờ.</p>
+        </div>
+
+        <div class="app-surface rounded-xl p-3 border app-border space-y-2">
+          <h4 class="font-bold uppercase tracking-wider text-[10px] app-muted">Nội dung & Quyền riêng tư</h4>
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="font-medium app-text">Chế độ nhúng bảo mật (youtube-nocookie)</p>
+              <p class="text-[10px] app-muted">Hạn chế cookie theo dõi bên thứ ba khi xem</p>
+            </div>
+            <input type="checkbox" id="privacyEmbedToggle" onchange="savePrivacyPref(this.checked)" class="w-4 h-4 accent-red-600 cursor-pointer">
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- MINI PLAYER BAR (Docked above Tab Bar with Red Progress Scrub)        -->
+    <!-- ===================================================================== -->
+    <div id="miniPlayerBar" class="mini-hidden app-surface border-t app-border px-2.5 flex items-center gap-2.5 shrink-0 z-30 shadow-xl relative">
+      <div onclick="restorePlayer()" class="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer py-1">
+        <img id="miniThumb" src="" class="w-12 h-9 rounded-md object-cover bg-zinc-800 shrink-0 shadow" alt="">
+        <div class="min-w-0 flex-1">
+          <p id="miniTitle" class="text-xs font-semibold app-text truncate"></p>
+          <p id="miniChannel" class="text-[10px] app-muted truncate"></p>
+        </div>
+      </div>
+      <button onclick="togglePlayPause()" id="miniPlayBtn" title="Phát / Tạm dừng" class="p-1.5 app-text hover:text-red-500 transition">
+        <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+      </button>
+      <button onclick="playNextTrack()" title="Bài tiếp theo" class="p-1 app-muted hover:text-white transition">
+        <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+      </button>
+      <button onclick="closePlayerCompletely()" title="Đóng trình phát" class="p-1.5 app-muted hover:text-red-500 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+      <div class="absolute bottom-0 left-0 right-0 h-[2px] bg-zinc-800">
+        <div id="miniProgressBar" class="h-full bg-gradient-to-r from-red-600 to-orange-500 transition-all duration-300" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- CINEMATIC DUAL-MODE PLAYER OVERLAY (iPhone 13 Spec)                   -->
+    <!-- ===================================================================== -->
+    <div id="playerOverlay" class="absolute inset-x-0 top-8 bottom-0 bg-[#121214] text-zinc-100 z-50 flex flex-col player-closed overflow-hidden">
+
+      <!-- Rich Colorful Ambient Back-Glow (Spreads behind square album artwork onto #121214) -->
+      <div id="ambientBackdrop" class="absolute inset-x-0 top-0 h-[440px] pointer-events-none transition-opacity duration-500 overflow-hidden">
+        <img id="ambientBgImg" src="" class="w-full h-full object-cover blur-[54px] saturate-150 scale-125 opacity-65" alt="">
+        <div class="absolute inset-0 bg-gradient-to-b from-[#121214]/45 via-[#121214]/75 to-[#121214]"></div>
+      </div>
+
+      <!-- Top Bar (Chevron "∨" ONLY on left — NO "Thu nhỏ" text; "YT Player" SF Pro semi-bold center; "♡" & "✕" right) -->
+      <div id="playerDragHeader" class="relative z-10 pt-2 pb-1.5 px-3.5 flex flex-col items-center shrink-0 cursor-grab active:cursor-grabbing">
+        <div class="w-full flex items-center justify-between">
+          <button onclick="minimizePlayer()" title="Thu gọn" class="w-8 h-8 rounded-full flex items-center justify-center text-zinc-300 hover:text-white hover:bg-white/10 transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+          </button>
+
+          <span class="text-[15px] font-semibold tracking-tight text-white">YT Player</span>
+
+          <div class="flex items-center gap-0.5">
+            <button onclick="toggleFavoriteCurrent()" class="w-8 h-8 rounded-full flex items-center justify-center text-zinc-300 hover:text-red-500 hover:bg-white/10 transition" id="btnFavOverlay" title="Yêu thích">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+            </button>
+            <button onclick="closePlayerCompletely()" class="w-8 h-8 rounded-full flex items-center justify-center text-zinc-300 hover:text-white hover:bg-white/10 transition" title="Đóng">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Glowing Red-to-Orange Segmented Capsule: [ 🎵 Music ] | [ 🎬 Video ] -->
+        <div class="mt-2 mb-1">
+          <div class="mode-pill-track">
+            <div id="modePillIndicator" class="mode-pill-indicator mode-music"></div>
+            <button type="button" onclick="setPlayerMode('music')" id="btnModeMusic" class="relative z-10 py-1.5 px-3 text-xs font-semibold text-white flex items-center justify-center gap-1.5 transition">
+            
+              <span>Music</span>
+            </button>
+            <button type="button" onclick="setPlayerMode('video')" id="btnModeVideo" class="relative z-10 py-1.5 px-3 text-xs font-semibold text-zinc-400 flex items-center justify-center gap-1.5 transition">
+
+              <span>Video</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SHARED MEDIA STAGE -->
+      <div id="mediaStageWrapper" class="relative z-10 shrink-0 transition-all duration-400">
+        <!-- Borderless 16:9 Video Stage with Natural Pinch-to-Zoom Support -->
+        <div id="videoStageBox" class="w-full aspect-video bg-black relative overflow-hidden group">
+          <div id="videoZoomInner" class="w-full h-full transition-transform duration-200 origin-center">
+            <div id="ytPlayerMount" class="w-full h-full"></div>
+          </div>
+          <!-- Subtle Pinch-to-Zoom Toggle Overlay Pill (Top-right on hover/tap) -->
+          <button onclick="cycleVideoZoom()" id="videoZoomBadge" title="Thu phóng khung hình video (Pinch-to-Zoom)" class="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity absolute top-2.5 right-2.5 z-20 bg-black/65 backdrop-blur-md border border-white/15 text-white text-[10px] font-medium px-2.5 py-1 rounded-full flex items-center gap-1">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+            <span id="videoZoomLabel">1.0x</span>
+          </button>
+        </div>
+
+        <!-- Prominent Floating Square Album Artwork (20px corners + colorful back-glow, no boxy border) -->
+        <div id="musicArtworkCard" class="hidden w-full py-3 px-6 flex flex-col items-center justify-center relative">
+          <div class="w-[232px] h-[232px] relative flex items-center justify-center">
+            <!-- Extra Ambient Glow Halo directly behind Square Artwork -->
+            <img id="musicArtGlowHalo" src="" class="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-70 rounded-[24px] pointer-events-none" alt="">
+            <img id="musicAlbumArt" src="" class="relative z-10 w-full h-full object-cover music-art-img music-art-playing" alt="">
+
+            <!-- Lyrics Overlay Card (Flipped over artwork when "[📄 Lời bài hát]" tapped) -->
+            <div id="lyricsOverlayPanel" class="hidden absolute inset-0 z-20 bg-[#141418]/95 backdrop-blur-xl rounded-[20px] border border-white/15 p-3.5 flex flex-col shadow-2xl">
+              <div class="flex items-center justify-between pb-2 border-b border-white/10 shrink-0">
+                <span class="text-[11px] font-semibold text-white">📄 Lời bài hát</span>
+                <button onclick="toggleLyricsPanel()" class="text-[10px] text-zinc-300 hover:text-white px-2 py-0.5 rounded-full bg-white/10">Đóng</button>
+              </div>
+              <div id="lyricsContentBox" class="flex-1 overflow-y-auto no-scrollbar py-2 text-[11px] text-zinc-200 leading-relaxed whitespace-pre-line text-center">
+                Đang tải lời bài hát...
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- File:// Protocol Notice -->
+      <div id="fileProtocolNotice" class="hidden relative z-10 mx-3 mt-1 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-[10px] text-amber-300 flex items-center justify-between gap-2">
+        <span>Chạy <code>./start_web.sh</code> nếu gặp lỗi 153 trên <code>file://</code>.</span>
+        <a id="directYtFallbackLink" href="#" target="_blank" rel="noopener" class="underline font-semibold shrink-0 text-white">Mở YouTube ↗</a>
+      </div>
+
+      <!-- =============================================================== -->
+      <!-- PANEL A: MUSIC MODE (Visualizer + Heart + "+ Playlist" + Glow)  -->
+      <!-- =============================================================== -->
+      <div id="musicModeControls" class="relative z-10 flex-1 flex flex-col justify-between px-5 pt-2 pb-3 overflow-y-auto no-scrollbar">
+
+        <!-- Meta Row: Wave Visualizer + Title/Subtitle on Left | Solid Heart "♥" + "+ Playlist" on Right -->
+        <div class="flex items-center justify-between gap-2.5">
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <div id="musicAudioWave" class="audio-wave playing" title="Đang phát">
+                <span></span><span></span><span></span><span></span>
+              </div>
+              <h2 id="musicTitle" class="text-[15px] font-bold text-white truncate">Tiêu đề bài hát</h2>
+            </div>
+            <p id="musicArtist" class="text-xs text-zinc-400 truncate mt-0.5">Nghệ sĩ</p>
+          </div>
+
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button onclick="toggleFavoriteCurrent()" id="musicHeartBtn" title="Yêu thích" class="w-8 h-8 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center text-zinc-300 hover:text-red-500 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+            </button>
+            <button onclick="openPlaylistModal()" title="Thêm vào Danh sách phát (+ Playlist)" class="h-8 px-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 flex items-center justify-center gap-1 text-[11px] font-medium text-zinc-200 transition">
+              <svg class="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h11M4 12h11M4 18h7"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Thin Red Timeline with Glowing Playhead -->
+        <div class="space-y-1.5 my-1">
+          <input type="range" id="musicSeekSlider" min="0" max="100" value="0" step="0.1"
+            oninput="onSeekInput(this.value)" onchange="onSeekCommit(this.value)"
+            class="w-full yt-range"
+            style="background: linear-gradient(to right, #ef4444 0%, rgba(255,255,255,0.14) 0%); height: 3px; border-radius: 999px;">
+          <div class="flex justify-between text-[10px] font-mono text-zinc-400">
+            <span id="musicCurrentTime">0:00</span>
+            <span id="musicDurationTime">0:00</span>
+          </div>
+        </div>
+
+        <!-- Crisp White Glow-Affected Playback Controls -->
+        <div class="flex items-center justify-between px-1 my-0.5">
+          <button onclick="toggleShuffle()" id="btnShuffle" title="Phát ngẫu nhiên" class="p-2 text-zinc-400 hover:text-white transition rounded-full">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+          </button>
+
+          <button onclick="playPrevTrack()" title="Bài trước" class="p-2 text-white hover:opacity-80 active:scale-90 transition drop-shadow">
+            <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+          </button>
+
+          <button onclick="togglePlayPause()" id="musicMainPlayBtn" title="Phát / Tạm dừng" class="w-14 h-14 rounded-full bg-white text-[#121214] flex items-center justify-center glow-play-btn hover:scale-105 active:scale-95 transition">
+            <svg class="w-7 h-7 fill-current" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+          </button>
+
+          <button onclick="playNextTrack()" title="Bài tiếp theo" class="p-2 text-white hover:opacity-80 active:scale-90 transition drop-shadow">
+            <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+          </button>
+
+          <button onclick="toggleRepeat()" id="btnRepeat" title="Lặp lại" class="p-2 text-zinc-400 hover:text-white transition rounded-full relative">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 1l4 4-4 4"/><path stroke-linecap="round" stroke-linejoin="round" d="M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+          </button>
+        </div>
+
+        <!-- Volume Slider (left) + "[ 📄 Lời bài hát ]" (right) -->
+        <div class="flex items-center justify-between gap-3 my-1">
+          <div class="flex items-center gap-2 flex-1 max-w-[165px]">
+            <button onclick="toggleMute()" id="btnMute" class="text-zinc-400 hover:text-white shrink-0">
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+            </button>
+            <input type="range" id="musicVolumeSlider" min="0" max="100" value="100"
+              oninput="onVolumeChange(this.value)"
+              class="w-full yt-range vol-range"
+              style="background: linear-gradient(to right, #ffffff 100%, rgba(255,255,255,0.16) 100%); height: 3px; border-radius: 999px;">
+          </div>
+
+          <button onclick="toggleLyricsPanel()" id="btnLyricsPill" class="px-3 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-[11px] font-medium text-zinc-200 flex items-center gap-1.5 shrink-0 transition">
+            <span>📄</span>
+            <span>Lời bài hát</span>
+          </button>
+        </div>
+
+        <!-- Sliding Drawer Pill: [ ☰ Danh sách phát tiếp theo (Up Next) ^ ] -->
+        <button onclick="toggleMusicQueueSheet(true)" class="w-full mt-1 py-2.5 px-3.5 rounded-2xl bg-white/[0.05] hover:bg-white/[0.09] border border-white/10 flex items-center justify-between text-[11px] font-medium text-zinc-200 transition">
+          <span class="flex items-center gap-2">
+            <svg class="w-3.5 h-3.5 text-zinc-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            <span>Danh sách phát tiếp theo (Up Next)</span>
+          </span>
+          <svg class="w-3.5 h-3.5 text-zinc-400" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg>
+        </button>
+      </div>
+
+      <!-- Music Mode Up Next Slide-Up Sheet -->
+      <div id="musicQueueSheet" class="hidden absolute inset-x-0 bottom-0 top-20 bg-[#16161a]/95 backdrop-blur-2xl border-t border-white/15 rounded-t-3xl z-30 flex flex-col p-4">
+        <div class="flex items-center justify-between pb-3 border-b border-white/10 shrink-0">
+          <span class="text-xs font-bold text-white flex items-center gap-2">
+            <span>☰</span> Danh sách phát tiếp theo (Up Next)
+          </span>
+          <button onclick="toggleMusicQueueSheet(false)" class="text-xs text-zinc-300 hover:text-white px-2.5 py-1 rounded-full bg-white/10">Đóng ∨</button>
+        </div>
+        <div id="musicUpNextList" class="flex-1 overflow-y-auto no-scrollbar space-y-2 pt-3"></div>
+      </div>
+
+      <!-- =============================================================== -->
+      <!-- PANEL B: VIDEO MODE (Unified 4 Pills + Faded Expandable Desc)   -->
+      <!-- =============================================================== -->
+      <div id="videoModeDetails" class="hidden relative z-10 p-3.5 space-y-3 flex-1 overflow-y-auto no-scrollbar">
+        <h2 class="text-[14px] font-semibold text-white leading-snug" id="overlayTitle">Tiêu đề video</h2>
+
+        <!-- Channel Row with Dark-Red "Subscribe" Button -->
+        <div class="flex items-center justify-between text-xs text-zinc-400 pb-2 border-b border-white/10">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-red-600 to-red-800 flex items-center justify-center font-bold text-white text-[11px] shrink-0 shadow" id="overlayAvatar">YT</div>
+            <div class="min-w-0">
+              <p class="font-semibold text-zinc-100 truncate text-xs" id="overlayChannel">Tên kênh</p>
+              <p class="text-[10px] text-zinc-400 truncate" id="overlayViews"></p>
+            </div>
+          </div>
+          <a id="subscribeChannelLink" href="https://www.youtube.com" target="_blank" rel="noopener" class="px-3.5 py-1.5 rounded-full bg-[#991b1b] hover:bg-red-700 border border-red-500/30 text-white text-[11px] font-semibold shrink-0 transition shadow">
+            Subscribe
+          </a>
+        </div>
+
+        <!-- Unified Row of 4 Modern Pill Buttons: [ ♡ Yêu thích ] [ + Danh sách phát ] [ 🔗 Sao chép ] [ ↗ YouTube ] -->
+        <div class="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5 text-[11px]">
+          <button onclick="toggleFavoriteCurrent()" class="px-3 py-1.5 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 flex items-center gap-1.5 text-zinc-200 shrink-0 transition">
+            <span id="videoFavIcon" class="text-red-400">♡</span>
+            <span id="actionFavLabel">Yêu thích</span>
+          </button>
+          <button onclick="openPlaylistModal()" class="px-3 py-1.5 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 flex items-center gap-1.5 text-zinc-200 shrink-0 transition">
+            <span class="text-red-400 font-bold">+</span>
+            <span>Danh sách phát</span>
+          </button>
+          <button onclick="copyCurrentVideoLink()" class="px-3 py-1.5 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 flex items-center gap-1.5 text-zinc-200 shrink-0 transition">
+            <span>🔗</span>
+            <span id="copyBtnLabel">Sao chép</span>
+          </button>
+          <a id="openInYoutubeBtn" href="#" target="_blank" rel="noopener" class="px-3 py-1.5 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 flex items-center gap-1.5 text-zinc-200 shrink-0 transition">
+            <span>↗</span>
+            <span>YouTube</span>
+          </a>
+        </div>
+
+        <!-- Expandable "Mô tả video" Card with Hashtags & Faded Gradient -->
+        <div onclick="toggleVideoDescription()" class="rounded-2xl p-3 bg-white/[0.04] border border-white/10 text-xs space-y-1.5 cursor-pointer hover:bg-white/[0.06] transition">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold text-white text-[11px]">Mô tả video</span>
+            <span id="descExpandHint" class="text-[10px] text-zinc-400">Xem thêm</span>
+          </div>
+          <p id="overlayHashtags" class="text-[11px] text-red-400/90 font-medium truncate"></p>
+          <div id="overlayDescWrapper" class="desc-collapsed">
+            <p id="overlayDesc" class="text-zinc-300/90 leading-relaxed text-[11px] whitespace-pre-line"></p>
+          </div>
+        </div>
+
+        <!-- Up Next List -->
+        <div class="space-y-2 pt-1">
+          <h4 class="font-semibold text-xs text-zinc-200">Video tiếp theo</h4>
+          <div id="upNextList" class="space-y-2"></div>
+        </div>
+      </div>
+
+      <!-- =============================================================== -->
+      <!-- "+ PLAYLIST" MODAL SHEET (100% Real Custom Playlists!)          -->
+      <!-- =============================================================== -->
+      <div id="playlistModal" class="hidden absolute inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-end">
+        <div class="w-full bg-[#18181d] border-t border-white/15 rounded-t-3xl p-4 space-y-3 max-h-[70%] flex flex-col">
+          <div class="flex items-center justify-between pb-2 border-b border-white/10">
+            <span class="text-xs font-bold text-white">Lưu vào Danh sách phát</span>
+            <button onclick="closePlaylistModal()" class="text-xs text-zinc-400 hover:text-white px-2 py-0.5 rounded-full bg-white/10">Xong</button>
+          </div>
+
+          <div id="playlistModalList" class="flex-1 overflow-y-auto no-scrollbar space-y-1.5"></div>
+
+          <form onsubmit="event.preventDefault(); createPlaylistFromInput();" class="flex gap-2 pt-2 border-t border-white/10">
+            <input type="text" id="newPlaylistNameInput" placeholder="Tên danh sách phát mới..." class="flex-1 bg-white/[0.06] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-red-500">
+            <button type="submit" class="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-3.5 py-1.5 rounded-xl shrink-0 transition">
+              + Tạo
+            </button>
+          </form>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Bottom Tab Bar -->
+    <div id="bottomTabBar" class="h-14 border-t app-border app-bg grid grid-cols-4 items-center shrink-0 z-30">
+      <button onclick="switchTab('home')" id="tabBtn-home" class="flex flex-col items-center gap-0.5 text-red-500">
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+        <span class="text-[10px] font-medium">Trang chủ</span>
+      </button>
+
+      <button onclick="switchTab('search')" id="tabBtn-search" class="flex flex-col items-center gap-0.5 app-muted">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <span class="text-[10px] font-medium">Tìm kiếm</span>
+      </button>
+
+      <button onclick="switchTab('library')" id="tabBtn-library" class="flex flex-col items-center gap-0.5 app-muted">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+        <span class="text-[10px] font-medium">Thư viện</span>
+      </button>
+
+      <button onclick="switchTab('settings')" id="tabBtn-settings" class="flex flex-col items-center gap-0.5 app-muted">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="text-[10px] font-medium">Cài đặt</span>
+      </button>
+    </div>
+
+    <!-- iPhone 13 Home Indicator Bar -->
+    <div id="simHomeBar" class="h-4 app-bg flex justify-center items-center pb-1 shrink-0 z-40">
+      <div class="w-32 h-1 bg-zinc-500/80 rounded-full"></div>
+    </div>
+
+  </div>
+
+  <script>
+    // Auto-detect real iPhone / standalone Home Screen app to render edge-to-edge full screen
+    (function() {
+      const isStandalone = window.navigator.standalone === true ||
+        (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+      const isMobileUA = /iPhone|iPod|Android/i.test(navigator.userAgent || '');
+      if (isStandalone || isMobileUA) {
+        document.body.classList.add('real-mobile-device');
+      }
+      if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      }
+    })();
+    // =========================================================================
+    // 1. CATALOG & PERSISTENT STATE (Favorites, Custom Playlists, History)
+    // =========================================================================
+    const LEGACY_INVALID_KEY = "AIzaSyBelxiJNR9tMcNv0YQUFmsdYLgJXgoOsos";
+    const DEFAULT_CONFIG_KEY = "AIzaSyB1fRKDSfqcCB0PFIU-hVwgXufLvD--mLw";
+
+    const DEMO_CATALOG = [
+      {
+        id: "Llw9Q6akRo4",
+        title: "SƠN TÙNG M-TP | CHÚNG TA CỦA TƯƠNG LAI | OFFICIAL MUSIC VIDEO",
+        channel: "Sơn Tùng M-TP Official",
+        channelId: "UClyA28-01x4z60eWQ2kiNbA",
+        views: "68M lượt xem",
+        duration: "4:15",
+        tags: "nhạc việt sơn tùng pop",
+        thumb: "https://i.ytimg.com/vi/Llw9Q6akRo4/hqdefault.jpg",
+        desc: "#ChungTaCuaTuongLai #SonTungMTP\nSƠN TÙNG M-TP | CHÚNG TA CỦA TƯƠNG LAI | OFFICIAL MUSIC VIDEO."
+      },
+      {
+        id: "Ws-QlpSlTR8",
+        title: "Đen - Nấu ăn cho em ft. PiaLinh (M/V)",
+        channel: "Đen Vâu Official",
+        channelId: "UCWu91J5KWEj1bQhCBuGeJxw",
+        views: "54M lượt xem",
+        duration: "4:32",
+        tags: "nhạc việt đen vâu rap chill acoustic",
+        thumb: "https://i.ytimg.com/vi/Ws-QlpSlTR8/hqdefault.jpg",
+        desc: "#NauAnChoEm #DenVau\nĐen - Nấu ăn cho em ft. PiaLinh (M/V). Một bài hát dành cho các em nhỏ vùng cao."
+      },
+      {
+        id: "abPmZCZZrFA",
+        title: "SƠN TÙNG M-TP | ĐỪNG LÀM TRÁI TIM ANH ĐAU | OFFICIAL MUSIC VIDEO",
+        channel: "Sơn Tùng M-TP Official",
+        channelId: "UClyA28-01x4z60eWQ2kiNbA",
+        views: "115M lượt xem",
+        duration: "5:26",
+        tags: "nhạc việt sơn tùng pop",
+        thumb: "https://i.ytimg.com/vi/abPmZCZZrFA/hqdefault.jpg",
+        desc: "#DungLamTraiTimAnhDau #SonTungMTP\nSƠN TÙNG M-TP | ĐỪNG LÀM TRÁI TIM ANH ĐAU | OFFICIAL MUSIC VIDEO."
+      },
+      {
+        id: "jfKfPfyJRdk",
+        title: "lofi hip hop radio - beats to relax/study to",
+        channel: "Lofi Girl",
+        channelId: "UCSJ4gkVC6NrvII8umztf0Ow",
+        views: "Trực tiếp 24/7",
+        duration: "LIVE",
+        tags: "lofi chill hip hop study relax",
+        thumb: "https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault.jpg",
+        desc: "#LofiGirl #ChillBeats\nPeaceful lofi hip hop radio beats to relax, study, code and chill to."
+      },
+      {
+        id: "dQw4w9WgXcQ",
+        title: "Rick Astley - Never Gonna Give You Up (Official Music Video)",
+        channel: "Rick Astley",
+        channelId: "UCuAXFkgsw1L7xaCfnd5JJOw",
+        views: "1.5B lượt xem",
+        duration: "3:33",
+        tags: "us uk pop rick astley classic",
+        thumb: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+        desc: "#RickAstley #NeverGonnaGiveYouUp\nThe official video for 'Never Gonna Give You Up' by Rick Astley."
+      },
+      {
+        id: "2Vv-BfVoq4g",
+        title: "Ed Sheeran - Perfect (Official Music Video)",
+        channel: "Ed Sheeran",
+        channelId: "UC0C-w0YjGpqDXGB8IHb662A",
+        views: "3.7B lượt xem",
+        duration: "4:40",
+        tags: "us uk pop ed sheeran ballad acoustic",
+        thumb: "https://i.ytimg.com/vi/2Vv-BfVoq4g/hqdefault.jpg",
+        desc: "#EdSheeran #Perfect\nThe official music video for Ed Sheeran - Perfect."
+      },
+      {
+        id: "kJQP7kiw5Fk",
+        title: "Luis Fonsi - Despacito ft. Daddy Yankee",
+        channel: "Luis Fonsi",
+        channelId: "UCxoq-4NaGjJQMUKlRALdrzA",
+        views: "8.4B lượt xem",
+        duration: "4:42",
+        tags: "us uk latin pop despacito remix",
+        thumb: "https://i.ytimg.com/vi/kJQP7kiw5Fk/hqdefault.jpg",
+        desc: "#Despacito #LuisFonsi\nLuis Fonsi - Despacito ft. Daddy Yankee."
+      }
+    ];
+
+    const videoRegistry = new Map();
+    DEMO_CATALOG.forEach(v => videoRegistry.set(v.id, v));
+
+    let userApiKey = localStorage.getItem('ytplayer_api_key');
+    if (userApiKey === null || userApiKey === LEGACY_INVALID_KEY) {
+      userApiKey = DEFAULT_CONFIG_KEY;
+      localStorage.setItem('ytplayer_api_key', userApiKey);
+    }
+
+    let favorites = loadJSON('ytplayer_favorites', [DEMO_CATALOG[0]]);
+    let history = loadJSON('ytplayer_history', [DEMO_CATALOG[0], DEMO_CATALOG[1]]);
+    let playlists = loadJSON('ytplayer_playlists', [
+      { id: 'pl_chill', name: 'Nhạc Chill Đêm Khuya', items: [DEMO_CATALOG[1], DEMO_CATALOG[3]] },
+      { id: 'pl_concert', name: 'Live Concert Yêu Thích', items: [DEMO_CATALOG[0]] }
+    ]);
+
+    favorites.forEach(v => videoRegistry.set(v.id, v));
+    history.forEach(v => videoRegistry.set(v.id, v));
+    playlists.forEach(pl => (pl.items || []).forEach(v => videoRegistry.set(v.id, v)));
+
+    let isDarkMode = localStorage.getItem('ytplayer_dark_mode') !== 'false';
+    let usePrivacyEmbed = localStorage.getItem('ytplayer_privacy_embed') === 'true';
+    let playerMode = localStorage.getItem('ytplayer_mode') || 'music'; // Default to Music showcase or saved preference
+
+    let apiStatus = { ok: false, code: 0, message: 'Đang kiểm tra kết nối API...' };
+    let currentVideoId = null;
+    let currentQueueIds = DEMO_CATALOG.map(v => v.id);
+    let currentLibTab = 'fav';
+    let activePlaylistViewId = null;
+    let currentHomeCategory = 'trending';
+
+    // Search Pagination & Cache
+    let searchDebounceTimer = null;
+    let lastSearchQuery = '';
+    let searchNextPageToken = null;
+    let currentSearchItems = [];
+    const apiCache = new Map();
+
+    // Player, Zoom, Transport & Sleep Timer
+    let ytPlayerInstance = null;
+    let ytApiReady = false;
+    let pendingMountVideoId = null;
+    let isPlayerPlaying = false;
+    let isSeeking = false;
+    let isShuffle = false;
+    let repeatMode = 0; // 0: off, 1: all, 2: one
+    let isMuted = false;
+    let videoZoomScale = 1.0;
+    let isDescExpanded = false;
+    let progressPollTimer = null;
+    let sleepTimerInterval = null;
+    let sleepRemainingSeconds = 0;
+
+    function loadJSON(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+      } catch (_) {
+        return fallback;
+      }
+    }
+
+    function saveLibraryState() {
+      try {
+        localStorage.setItem('ytplayer_favorites', JSON.stringify(favorites));
+        localStorage.setItem('ytplayer_history', JSON.stringify(history));
+        localStorage.setItem('ytplayer_playlists', JSON.stringify(playlists));
+      } catch (_) {}
+      document.getElementById('favCount').innerText = favorites.length;
+      document.getElementById('plCount').innerText = playlists.length;
+      document.getElementById('histCount').innerText = history.length;
+    }
+
+    // =========================================================================
+    // 2. LOAD YOUTUBE IFRAME API
+    // =========================================================================
+    window.onYouTubeIframeAPIReady = function() {
+      ytApiReady = true;
+      if (pendingMountVideoId) {
+        const vid = pendingMountVideoId;
+        pendingMountVideoId = null;
+        mountYouTubeVideo(vid);
+      }
+    };
+    (function loadYTAPI() {
+      if (window.YT && window.YT.Player) {
+        ytApiReady = true;
+        return;
+      }
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(tag);
+    })();
+
+    // =========================================================================
+    // 3. FORMATTING HELPERS
+    // =========================================================================
+    function decodeHTML(str) {
+      if (!str) return '';
+      const txt = document.createElement('textarea');
+      txt.innerHTML = str;
+      return txt.value;
+    }
+
+    function escapeHTML(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function formatSeconds(sec) {
+      if (!sec || !isFinite(sec) || sec < 0) return '0:00';
+      const total = Math.floor(sec);
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      return `${m}:${String(s).padStart(2, '0')}`;
+    }
+
+    function parseISO8601Duration(iso) {
+      if (!iso) return '';
+      if (iso === 'P0D' || iso === 'PT0S') return 'LIVE';
+      if (iso.includes(':')) return iso;
+      const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+      if (!match) return '';
+      const h = parseInt(match[1] || '0', 10);
+      const m = parseInt(match[2] || '0', 10);
+      const s = parseInt(match[3] || '0', 10);
+      if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      return `${m}:${String(s).padStart(2, '0')}`;
+    }
+
+    function formatViewCount(raw) {
+      if (!raw) return '';
+      if (isNaN(Number(raw))) return raw;
+      const n = Number(raw);
+      if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1) + 'B lượt xem';
+      if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M lượt xem';
+      if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K lượt xem';
+      return n + ' lượt xem';
+    }
+
+    function extractHashtags(desc, fallbackTitle) {
+      const matches = (desc || '').match(/#[\p{L}\p{N}_]+/gu);
+      if (matches && matches.length > 0) return matches.slice(0, 4).join(' ');
+      const words = (fallbackTitle || '').split(/\s+/).filter(w => w.length > 2).slice(0, 2);
+      return words.length ? words.map(w => '#' + w.replace(/[^\p{L}\p{N}]/gu, '')).join(' ') : '#YTPlayer #Music';
+    }
+
+    function extractYouTubeId(input) {
+      const s = (input || '').trim();
+      if (/^[A-Za-z0-9_-]{11}$/.test(s) && /[A-Z]/.test(s) && /\d/.test(s)) return s;
+      try {
+        const url = new URL(s);
+        if (url.hostname.includes('youtu.be')) {
+          const id = url.pathname.split('/').filter(Boolean)[0];
+          return id && id.length === 11 ? id : null;
+        }
+        if (url.hostname.includes('youtube.com')) {
+          const v = url.searchParams.get('v');
+          if (v && v.length === 11) return v;
+          const parts = url.pathname.split('/').filter(Boolean);
+          const idx = parts.findIndex(p => ['shorts', 'embed', 'live'].includes(p));
+          if (idx !== -1 && parts[idx + 1] && parts[idx + 1].length === 11) return parts[idx + 1];
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    // =========================================================================
+    // 4. YOUTUBE DATA API v3 CLIENT
+    // =========================================================================
+    function parseYouTubeApiError(status, payload) {
+      const errObj = payload && payload.error ? payload.error : null;
+      const reason = errObj?.errors?.[0]?.reason || errObj?.status || '';
+      const rawMsg = errObj?.message || `HTTP ${status}`;
+
+      if (status === 403 && (reason === 'forbidden' || reason === 'accessNotConfigured' || errObj?.status === 'PERMISSION_DENIED')) {
+        return {
+          code: 403,
+          shortLabel: 'Chưa bật API v3 (403)',
+          message: 'Khóa API hiện tại bị từ chối quyền (403 PERMISSION_DENIED) do dịch vụ "YouTube Data API v3" chưa được bật trên Google Cloud Project của khóa này.'
+        };
+      }
+      if (status === 403 && (reason === 'quotaExceeded' || reason === 'dailyLimitExceeded')) {
+        return {
+          code: 429,
+          shortLabel: 'Hết hạn ngạch (Quota)',
+          message: 'Đã hết 10.000 quota miễn phí trong ngày của YouTube Data API v3.'
+        };
+      }
+      if (status === 400 && (reason === 'keyInvalid' || rawMsg.toLowerCase().includes('api key not valid'))) {
+        return {
+          code: 400,
+          shortLabel: 'Sai API Key (400)',
+          message: 'Khóa API không hợp lệ. Vui lòng kiểm tra lại chuỗi AIzaSy... trong Cài đặt.'
+        };
+      }
+      return { code: status || -1, shortLabel: `Lỗi API (${status || 'Mạng'})`, message: rawMsg };
+    }
+
+    async function verifyApiKey(keyToTest) {
+      const key = (keyToTest ?? userApiKey ?? '').trim();
+      const dot = document.getElementById('apiDot');
+      const badge = document.getElementById('settingsApiBadge');
+      const diagBox = document.getElementById('apiDiagnosticBox');
+
+      if (!key) {
+        apiStatus = { ok: false, code: 0, message: 'Chưa nhập YouTube Data API v3 Key.' };
+        dot.className = 'w-1.5 h-1.5 rounded-full bg-zinc-500';
+        badge.innerText = 'Chưa có khóa';
+        updateHomeBanner();
+        return false;
+      }
+
+      badge.innerText = 'Đang kiểm tra...';
+      try {
+        const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=dQw4w9WgXcQ&key=${encodeURIComponent(key)}`);
+        const data = await res.json();
+
+        if (res.ok && data.items && data.items.length > 0) {
+          apiStatus = { ok: true, code: 200, message: 'Đã kết nối trực tiếp YouTube Data API v3!' };
+          dot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400';
+          badge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-medium';
+          badge.innerText = '✓ Đã kết nối';
+          diagBox.innerHTML = `<p class="text-emerald-400 font-medium">✓ Kết nối YouTube Data API v3 hoạt động hoàn hảo!</p>`;
+          updateHomeBanner();
+          return true;
+        } else {
+          const parsed = parseYouTubeApiError(res.status, data);
+          apiStatus = { ok: false, code: parsed.code, message: parsed.message };
+          dot.className = 'w-1.5 h-1.5 rounded-full bg-red-500';
+          badge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-medium';
+          badge.innerText = parsed.shortLabel;
+          diagBox.innerHTML = `<p class="text-red-400 font-semibold">✕ ${escapeHTML(parsed.message)}</p>`;
+          updateHomeBanner();
+          return false;
+        }
+      } catch (_) {
+        apiStatus = { ok: false, code: -1, message: 'Không thể kết nối mạng tới máy chủ Google API.' };
+        dot.className = 'w-1.5 h-1.5 rounded-full bg-amber-400';
+        badge.innerText = 'Ngoại tuyến';
+        updateHomeBanner();
+        return false;
+      }
+    }
+
+    async function fetchYouTubeSearchAPI(query, pageToken = '') {
+      const cacheKey = `search:${query.toLowerCase()}:${pageToken}:${userApiKey}`;
+      const cached = apiCache.get(cacheKey);
+      if (cached && Date.now() - cached.ts < 5 * 60 * 1000) return cached.data;
+
+      let searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=15&q=${encodeURIComponent(query)}&key=${encodeURIComponent(userApiKey)}`;
+      if (pageToken) searchUrl += `&pageToken=${encodeURIComponent(pageToken)}`;
+
+      const res = await fetch(searchUrl);
+      const data = await res.json();
+      if (!res.ok || data.error) throw parseYouTubeApiError(res.status, data);
+
+      const rawItems = (data.items || []).filter(it => it.id && it.id.videoId && it.snippet);
+      const ids = rawItems.map(it => it.id.videoId).join(',');
+
+      const detailsMap = {};
+      if (ids) {
+        try {
+          const detailRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics,snippet&id=${encodeURIComponent(ids)}&key=${encodeURIComponent(userApiKey)}`);
+          const detailData = await detailRes.json();
+          if (detailRes.ok && detailData.items) {
+            detailData.items.forEach(d => {
+              detailsMap[d.id] = {
+                duration: parseISO8601Duration(d.contentDetails?.duration || ''),
+                views: formatViewCount(d.statistics?.viewCount || ''),
+                fullDesc: d.snippet?.description || '',
+                channelId: d.snippet?.channelId || ''
+              };
+            });
+          }
+        } catch (_) {}
+      }
+
+      const mapped = rawItems.map(item => {
+        const vid = item.id.videoId;
+        const meta = detailsMap[vid] || {};
+        const vObj = {
+          id: vid,
+          title: decodeHTML(item.snippet.title),
+          channel: decodeHTML(item.snippet.channelTitle),
+          channelId: meta.channelId || item.snippet.channelId || '',
+          views: meta.views || 'YouTube',
+          duration: meta.duration || 'Video',
+          thumb: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+          desc: meta.fullDesc || item.snippet.description || ''
+        };
+        videoRegistry.set(vObj.id, vObj);
+        return vObj;
+      });
+
+      const result = { items: mapped, nextPageToken: data.nextPageToken || null };
+      apiCache.set(cacheKey, { ts: Date.now(), data: result });
+      return result;
+    }
+
+    async function fetchYouTubeTrendingAPI(regionCode = 'VN') {
+      const cacheKey = `trending:${regionCode}:${userApiKey}`;
+      const cached = apiCache.get(cacheKey);
+      if (cached && Date.now() - cached.ts < 5 * 60 * 1000) return cached.data;
+
+      const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&chart=mostPopular&regionCode=${regionCode}&maxResults=15&key=${encodeURIComponent(userApiKey)}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok || data.error) throw parseYouTubeApiError(res.status, data);
+
+      const items = (data.items || []).map(item => {
+        const vObj = {
+          id: item.id,
+          title: decodeHTML(item.snippet?.title || ''),
+          channel: decodeHTML(item.snippet?.channelTitle || ''),
+          channelId: item.snippet?.channelId || '',
+          views: formatViewCount(item.statistics?.viewCount || ''),
+          duration: parseISO8601Duration(item.contentDetails?.duration || ''),
+          thumb: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`,
+          desc: item.snippet?.description || ''
+        };
+        videoRegistry.set(vObj.id, vObj);
+        return vObj;
+      });
+
+      apiCache.set(cacheKey, { ts: Date.now(), data: items });
+      return items;
+    }
+
+    // =========================================================================
+    // 5. HOME FEED & SEARCH
+    // =========================================================================
+    function updateHomeBanner() {
+      const banner = document.getElementById('homeApiBanner');
+      const text = document.getElementById('homeApiBannerText');
+      if (apiStatus.ok) banner.classList.add('hidden');
+      else {
+        banner.classList.remove('hidden');
+        text.innerText = apiStatus.message;
+      }
+    }
+
+    function selectHomeCategory(cat, btnEl) {
+      currentHomeCategory = cat;
+      document.querySelectorAll('.home-cat-btn').forEach(b => {
+        b.className = 'home-cat-btn px-3 py-1 app-surface-2 border app-border app-text rounded-full shrink-0 transition';
+      });
+      if (btnEl) btnEl.className = 'home-cat-btn px-3 py-1 bg-red-600 text-white font-medium rounded-full shrink-0 transition';
+      loadHomeFeed(false);
+    }
+
+    async function loadHomeFeed(forceRefresh = false) {
+      if (forceRefresh) apiCache.clear();
+      const listEl = document.getElementById('homeFeedList');
+      const titleEl = document.getElementById('homeSectionTitle');
+      listEl.innerHTML = `<div class="py-10 text-center text-xs app-muted animate-pulse">Đang tải danh sách video...</div>`;
+
+      if (userApiKey) {
+        try {
+          let items = [];
+          if (currentHomeCategory === 'trending') {
+            titleEl.innerText = 'Thịnh hành tại Việt Nam';
+            items = await fetchYouTubeTrendingAPI('VN');
+          } else {
+            titleEl.innerText = currentHomeCategory;
+            const res = await fetchYouTubeSearchAPI(currentHomeCategory);
+            items = res.items;
+          }
+          apiStatus = { ok: true, code: 200, message: 'Đã kết nối YouTube Data API v3' };
+          document.getElementById('apiDot').className = 'w-1.5 h-1.5 rounded-full bg-emerald-400';
+          updateHomeBanner();
+          currentQueueIds = items.map(v => v.id);
+          renderHomeCards(items);
+          return;
+        } catch (apiErr) {
+          if (apiErr && apiErr.message) {
+            apiStatus = { ok: false, code: apiErr.code || 403, message: apiErr.message };
+            updateHomeBanner();
+          }
+        }
+      }
+
+      titleEl.innerText = currentHomeCategory === 'trending' ? 'Khám phá nổi bật' : currentHomeCategory;
+      currentQueueIds = DEMO_CATALOG.map(v => v.id);
+      renderHomeCards(DEMO_CATALOG);
+    }
+
+    function renderHomeCards(list) {
+      const listEl = document.getElementById('homeFeedList');
+      if (!list || list.length === 0) {
+        listEl.innerHTML = `<div class="py-10 text-center text-xs app-muted">Không có video nào để hiển thị.</div>`;
+        return;
+      }
+
+      listEl.innerHTML = list.map(v => {
+        const initials = escapeHTML((v.channel || 'YT').substring(0, 2).toUpperCase());
+        return `
+          <div onclick="openPlayerById('${escapeHTML(v.id)}')" class="yt-card-anim cursor-pointer group space-y-2">
+            <div class="relative w-full aspect-video rounded-2xl overflow-hidden bg-zinc-900 border app-border">
+              <img src="${escapeHTML(v.thumb)}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" alt="">
+              ${v.duration ? `<span class="absolute bottom-2 right-2 bg-black/85 text-white px-1.5 py-0.5 rounded text-[10px] font-semibold">${escapeHTML(v.duration)}</span>` : ''}
+            </div>
+            <div class="flex gap-2.5 px-0.5">
+              <div class="w-8 h-8 rounded-full bg-gradient-to-br from-red-600 to-red-800 text-white shrink-0 flex items-center justify-center font-bold text-[11px]">${initials}</div>
+              <div class="flex-1 min-w-0">
+                <h3 class="text-xs font-semibold leading-snug line-clamp-2 app-text">${escapeHTML(v.title)}</h3>
+                <p class="text-[11px] app-muted mt-0.5 truncate">${escapeHTML(v.channel)}${v.views ? ` • ${escapeHTML(v.views)}` : ''}</p>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderSearchIdle() {
+      const container = document.getElementById('searchResults');
+      const statusHtml = apiStatus.ok
+        ? `<p class="text-[11px] text-emerald-400 font-medium">✓ Đã kết nối trực tiếp với YouTube Data API v3</p>`
+        : `<p class="text-[10px] text-amber-400">${escapeHTML(apiStatus.message)}</p>`;
+
+      container.innerHTML = `
+        <div class="text-center py-6 px-2 text-xs space-y-1.5">
+          <p class="app-muted">Nhập tên bài hát, concert hoặc dán link YouTube để trải nghiệm ở chế độ <b>🎵 Music</b> & <b>🎬 Video</b>.</p>
+          ${statusHtml}
+        </div>
+      `;
+    }
+
+    function clearSearch() {
+      const input = document.getElementById('searchInput');
+      input.value = '';
+      document.getElementById('clearSearchBtn').classList.add('hidden');
+      lastSearchQuery = '';
+      searchNextPageToken = null;
+      currentSearchItems = [];
+      renderSearchIdle();
+      input.focus();
+    }
+
+    function quickSearch(tag) {
+      document.getElementById('searchInput').value = tag;
+      handleSearch(true);
+    }
+
+    function handleSearch(immediate = false) {
+      clearTimeout(searchDebounceTimer);
+      const q = document.getElementById('searchInput').value.trim();
+      document.getElementById('clearSearchBtn').classList.toggle('hidden', !q);
+      if (!q) { renderSearchIdle(); return; }
+
+      const run = async () => {
+        lastSearchQuery = q;
+        searchNextPageToken = null;
+        const container = document.getElementById('searchResults');
+
+        const directId = extractYouTubeId(q);
+        if (directId) {
+          container.innerHTML = `<div class="text-center py-8 text-xs app-muted animate-pulse">Đang tải thông tin từ liên kết YouTube...</div>`;
+          const directVideo = await resolveDirectVideo(directId);
+          currentSearchItems = [directVideo];
+          currentQueueIds = [directVideo.id, ...DEMO_CATALOG.map(v => v.id)];
+          renderSearchResults(currentSearchItems, 'Liên kết YouTube trực tiếp', null);
+          return;
+        }
+
+        if (userApiKey) {
+          container.innerHTML = `<div class="text-center py-8 text-xs app-muted animate-pulse">Đang tìm kiếm trên YouTube Data API v3...</div>`;
+          try {
+            const res = await fetchYouTubeSearchAPI(q);
+            apiStatus = { ok: true, code: 200, message: 'Đã kết nối YouTube Data API v3' };
+            document.getElementById('apiDot').className = 'w-1.5 h-1.5 rounded-full bg-emerald-400';
+            updateHomeBanner();
+
+            currentSearchItems = res.items;
+            searchNextPageToken = res.nextPageToken;
+            if (currentSearchItems.length > 0) currentQueueIds = currentSearchItems.map(v => v.id);
+
+            if (currentSearchItems.length === 0) {
+              container.innerHTML = `<div class="text-center py-8 text-xs app-muted">Không tìm thấy kết quả cho "<b>${escapeHTML(q)}</b>".</div>`;
+            } else {
+              renderSearchResults(currentSearchItems, 'YouTube API v3 trực tiếp', null);
+            }
+            return;
+          } catch (apiErr) {
+            apiStatus = { ok: false, code: apiErr.code || 403, message: apiErr.message || 'Lỗi kết nối YouTube API' };
+            document.getElementById('apiDot').className = 'w-1.5 h-1.5 rounded-full bg-red-500';
+            updateHomeBanner();
+            fallbackLocalSearch(q, apiStatus.message);
+            return;
+          }
+        }
+        fallbackLocalSearch(q, 'Chưa cấu hình YouTube Data API v3 Key.');
+      };
+
+      if (immediate) run();
+      else searchDebounceTimer = setTimeout(run, 380);
+    }
+
+    async function loadMoreSearchResults() {
+      if (!searchNextPageToken || !lastSearchQuery) return;
+      const btn = document.getElementById('btnLoadMoreSearch');
+      if (btn) { btn.disabled = true; btn.innerText = 'Đang tải thêm...'; }
+      try {
+        const res = await fetchYouTubeSearchAPI(lastSearchQuery, searchNextPageToken);
+        const existingIds = new Set(currentSearchItems.map(v => v.id));
+        res.items.forEach(item => { if (!existingIds.has(item.id)) currentSearchItems.push(item); });
+        currentQueueIds = currentSearchItems.map(v => v.id);
+        searchNextPageToken = res.nextPageToken;
+        renderSearchResults(currentSearchItems, 'YouTube API v3 trực tiếp', null);
+      } catch (_) {
+        if (btn) { btn.disabled = false; btn.innerText = 'Thử tải thêm lại'; }
+      }
+    }
+
+    async function resolveDirectVideo(videoId) {
+      if (videoRegistry.has(videoId)) return videoRegistry.get(videoId);
+      try {
+        const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent('https://www.youtube.com/watch?v=' + videoId)}&format=json`);
+        if (oembedRes.ok) {
+          const oe = await oembedRes.json();
+          const vObj = {
+            id: videoId,
+            title: oe.title || `YouTube Video (${videoId})`,
+            channel: oe.author_name || 'YouTube',
+            views: 'Phát trực tiếp',
+            duration: 'Video',
+            thumb: oe.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            desc: `Phát trực tiếp từ ID video YouTube: ${videoId}`
+          };
+          videoRegistry.set(videoId, vObj);
+          return vObj;
+        }
+      } catch (_) {}
+
+      const fallbackObj = {
+        id: videoId,
+        title: `Video YouTube (${videoId})`,
+        channel: 'YouTube Direct',
+        views: 'Phát trực tiếp',
+        duration: 'Video',
+        thumb: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        desc: `Phát trực tiếp từ ID video YouTube: ${videoId}`
+      };
+      videoRegistry.set(videoId, fallbackObj);
+      return fallbackObj;
+    }
+
+    function fallbackLocalSearch(q, errorReason) {
+      const container = document.getElementById('searchResults');
+      const qLower = q.toLowerCase();
+      const matched = DEMO_CATALOG.filter(v =>
+        v.title.toLowerCase().includes(qLower) ||
+        v.channel.toLowerCase().includes(qLower) ||
+        v.desc.toLowerCase().includes(qLower) ||
+        (v.tags && v.tags.toLowerCase().includes(qLower))
+      );
+
+      const errorCard = errorReason ? `
+        <div class="rounded-xl p-2.5 border border-red-500/40 bg-red-500/10 text-[10px] space-y-1 mb-2">
+          <p class="font-semibold text-red-400">Không thể gọi YouTube Data API v3 trực tiếp</p>
+          <p class="app-muted leading-snug">${escapeHTML(errorReason)}</p>
+        </div>
+      ` : '';
+
+      if (matched.length === 0) {
+        container.innerHTML = `${errorCard}<div class="text-center py-6 text-xs app-muted">Không khớp video nào trong danh mục mẫu.</div>`;
+        return;
+      }
+      renderSearchResults(matched, 'Danh mục có sẵn', errorCard);
+    }
+
+    function renderSearchResults(list, sourceLabel, topAlertHtml) {
+      const container = document.getElementById('searchResults');
+      const loadMoreHtml = searchNextPageToken ? `
+        <div class="pt-2 pb-1 text-center">
+          <button id="btnLoadMoreSearch" onclick="loadMoreSearchResults()" class="px-4 py-1.5 rounded-full app-surface-2 border app-border text-xs font-medium app-text hover:border-red-500 transition">
+            Tải thêm kết quả
+          </button>
+        </div>
+      ` : '';
+
+      container.innerHTML = `
+        ${topAlertHtml || ''}
+        <div class="flex justify-between items-center text-[10px] app-muted pb-0.5">
+          <span>Hiển thị ${list.length} video</span>
+          <span class="text-emerald-400 font-mono">(${escapeHTML(sourceLabel)})</span>
+        </div>
+      ` + list.map(v => `
+        <div onclick="openPlayerById('${escapeHTML(v.id)}')" class="yt-card-anim flex gap-2.5 cursor-pointer hover:opacity-90 p-1.5 rounded-xl app-surface border app-border transition">
+          <div class="relative w-28 aspect-video rounded-lg overflow-hidden bg-zinc-900 shrink-0">
+            <img src="${escapeHTML(v.thumb)}" loading="lazy" class="w-full h-full object-cover" alt="">
+            ${v.duration ? `<span class="absolute bottom-1 right-1 bg-black/85 text-white px-1 py-0.2 rounded text-[9px] font-semibold">${escapeHTML(v.duration)}</span>` : ''}
+          </div>
+          <div class="flex-1 min-w-0 py-0.5">
+            <h4 class="text-xs font-semibold app-text line-clamp-2 leading-snug">${escapeHTML(v.title)}</h4>
+            <p class="text-[10px] app-muted mt-1 truncate">${escapeHTML(v.channel)}</p>
+            <p class="text-[10px] app-muted opacity-80">${escapeHTML(v.views)}</p>
+          </div>
+        </div>
+      `).join('') + loadMoreHtml;
+    }
+
+    // =========================================================================
+    // 6. DUAL-MODE PLAYER (MUSIC & VIDEO), PINCH-ZOOM & AUDIO VISUALIZER
+    // =========================================================================
+    function setPlayerMode(mode) {
+      playerMode = (mode === 'music') ? 'music' : 'video';
+      localStorage.setItem('ytplayer_mode', playerMode);
+
+      const indicator = document.getElementById('modePillIndicator');
+      const btnMusic = document.getElementById('btnModeMusic');
+      const btnVideo = document.getElementById('btnModeVideo');
+      const videoBox = document.getElementById('videoStageBox');
+      const musicCard = document.getElementById('musicArtworkCard');
+      const musicPanel = document.getElementById('musicModeControls');
+      const videoPanel = document.getElementById('videoModeDetails');
+      const ambient = document.getElementById('ambientBackdrop');
+
+      if (playerMode === 'music') {
+        indicator.className = 'mode-pill-indicator mode-music';
+        btnMusic.classList.replace('text-zinc-400', 'text-white');
+        btnVideo.classList.replace('text-white', 'text-zinc-400');
+
+        videoBox.style.position = 'absolute';
+        videoBox.style.width = '1px';
+        videoBox.style.height = '1px';
+        videoBox.style.opacity = '0.01';
+        videoBox.style.pointerEvents = 'none';
+
+        musicCard.classList.remove('hidden');
+        musicPanel.classList.remove('hidden');
+        videoPanel.classList.add('hidden');
+        ambient.style.opacity = '1';
+      } else {
+        indicator.className = 'mode-pill-indicator mode-video';
+        btnVideo.classList.replace('text-zinc-400', 'text-white');
+        btnMusic.classList.replace('text-white', 'text-zinc-400');
+
+        videoBox.style.position = '';
+        videoBox.style.width = '';
+        videoBox.style.height = '';
+        videoBox.style.opacity = '1';
+        videoBox.style.pointerEvents = 'auto';
+
+        musicCard.classList.add('hidden');
+        musicPanel.classList.add('hidden');
+        videoPanel.classList.remove('hidden');
+        ambient.style.opacity = '0.18';
+        toggleMusicQueueSheet(false);
+      }
+    }
+
+    function openPlayerById(videoId) {
+      const v = videoRegistry.get(videoId);
+      if (!v) return;
+      currentVideoId = videoId;
+      videoZoomScale = 1.0;
+      applyVideoZoom();
+
+      // Video Mode metadata
+      document.getElementById('overlayTitle').innerText = v.title;
+      document.getElementById('overlayChannel').innerText = v.channel;
+      document.getElementById('overlayViews').innerText = v.views || 'YouTube Official';
+      document.getElementById('overlayHashtags').innerText = extractHashtags(v.desc, v.title);
+      document.getElementById('overlayDesc').innerText = v.desc || 'Không có mô tả cho video này.';
+      document.getElementById('overlayAvatar').innerText = (v.channel || 'YT').substring(0, 2).toUpperCase();
+
+      isDescExpanded = false;
+      document.getElementById('overlayDescWrapper').classList.add('desc-collapsed');
+      document.getElementById('descExpandHint').innerText = 'Xem thêm';
+
+      const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(v.id)}`;
+      document.getElementById('openInYoutubeBtn').href = watchUrl;
+      document.getElementById('directYtFallbackLink').href = watchUrl;
+      document.getElementById('subscribeChannelLink').href = v.channelId
+        ? `https://www.youtube.com/channel/${encodeURIComponent(v.channelId)}`
+        : `https://www.youtube.com/results?search_query=${encodeURIComponent(v.channel)}`;
+
+      // Music Mode metadata (Split song title & subtitle cleanly if pipe "|" present)
+      const parts = v.title.split('|').map(s => s.trim()).filter(Boolean);
+      document.getElementById('musicTitle').innerText = parts[0] || v.title;
+      document.getElementById('musicArtist').innerText = parts.length > 1 ? `${v.channel} • ${parts[1]}` : v.channel;
+      document.getElementById('musicAlbumArt').src = v.thumb;
+      document.getElementById('musicArtGlowHalo').src = v.thumb;
+      document.getElementById('ambientBgImg').src = v.thumb;
+      document.getElementById('musicCurrentTime').innerText = '0:00';
+      document.getElementById('musicDurationTime').innerText = (v.duration && v.duration.includes(':')) ? v.duration : '0:00';
+      updateSeekBarFill(0);
+
+      if (!document.getElementById('lyricsOverlayPanel').classList.contains('hidden')) {
+        loadLyricsForVideo(v);
+      }
+
+      // Mini Player metadata
+      document.getElementById('miniThumb').src = v.thumb;
+      document.getElementById('miniTitle').innerText = v.title;
+      document.getElementById('miniChannel').innerText = v.channel;
+      document.getElementById('miniProgressBar').style.width = '0%';
+      setMiniBarVisible(false);
+
+      document.getElementById('fileProtocolNotice').classList.toggle('hidden', window.location.protocol !== 'file:');
+
+      setPlayerMode(playerMode);
+      mountYouTubeVideo(v.id);
+      updateFavButton();
+      renderUpNext(v.id);
+
+      history = [v, ...history.filter(h => h.id !== v.id)].slice(0, 50);
+      saveLibraryState();
+
+      const overlay = document.getElementById('playerOverlay');
+      overlay.style.transform = '';
+      overlay.classList.remove('player-closed', 'player-minimized');
+      overlay.classList.add('player-expanded');
+    }
+
+    function toggleVideoDescription() {
+      isDescExpanded = !isDescExpanded;
+      document.getElementById('overlayDescWrapper').classList.toggle('desc-collapsed', !isDescExpanded);
+      document.getElementById('descExpandHint').innerText = isDescExpanded ? 'Thu gọn' : 'Xem thêm';
+    }
+
+    // Pinch-to-Zoom on Borderless 16:9 Video Stage
+    function cycleVideoZoom() {
+      const steps = [1.0, 1.18, 1.35];
+      const nextIdx = (steps.indexOf(videoZoomScale) + 1) % steps.length;
+      videoZoomScale = steps[nextIdx];
+      applyVideoZoom();
+    }
+
+    function applyVideoZoom() {
+      document.getElementById('videoZoomInner').style.transform = `scale(${videoZoomScale.toFixed(2)})`;
+      document.getElementById('videoZoomLabel').innerText = `${videoZoomScale.toFixed(1)}x`;
+    }
+
+    (function setupVideoPinchZoom() {
+      const box = document.getElementById('videoStageBox');
+      let initialDist = 0;
+      let startScale = 1.0;
+
+      box.addEventListener('wheel', (e) => {
+        if (e.ctrlKey) {
+          e.preventDefault();
+          videoZoomScale = Math.min(2.0, Math.max(1.0, videoZoomScale - e.deltaY * 0.005));
+          applyVideoZoom();
+          const badge = document.getElementById('videoZoomBadge');
+          badge.style.opacity = '1';
+          clearTimeout(badge._hideT);
+          badge._hideT = setTimeout(() => { badge.style.opacity = ''; }, 1200);
+        }
+      }, { passive: false });
+
+      box.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+          const dx = e.touches[0].clientX - e.touches[1].clientX;
+          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          initialDist = Math.hypot(dx, dy);
+          startScale = videoZoomScale;
+        }
+      }, { passive: true });
+
+      box.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2 && initialDist > 0) {
+          const dx = e.touches[0].clientX - e.touches[1].clientX;
+          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          const ratio = Math.hypot(dx, dy) / initialDist;
+          videoZoomScale = Math.min(2.0, Math.max(1.0, startScale * ratio));
+          applyVideoZoom();
+        }
+      }, { passive: true });
+    })();
+
+    function mountYouTubeVideo(videoId) {
+      const host = usePrivacyEmbed ? 'https://www.youtube-nocookie.com' : 'https://www.youtube.com';
+
+      if (!usePrivacyEmbed && window.location.protocol !== 'file:') {
+        if (!ytApiReady || !window.YT || !window.YT.Player) {
+          pendingMountVideoId = videoId;
+          return;
+        }
+        if (ytPlayerInstance && typeof ytPlayerInstance.loadVideoById === 'function') {
+          ytPlayerInstance.loadVideoById(videoId);
+          setPlayingUIState(true);
+          startProgressPolling();
+          return;
+        }
+
+        document.getElementById('ytPlayerMount').innerHTML = '<div id="ytApiInner"></div>';
+        ytPlayerInstance = new YT.Player('ytApiInner', {
+          width: '100%',
+          height: '100%',
+          videoId: videoId,
+          playerVars: {
+            autoplay: 1,
+            playsinline: 1,
+            rel: 0,
+            modestbranding: 1,
+            enablejsapi: 1
+          },
+          events: {
+            onReady: () => {
+              setPlayingUIState(true);
+              startProgressPolling();
+            },
+            onStateChange: (ev) => {
+              if (ev.data === YT.PlayerState.PLAYING) {
+                setPlayingUIState(true);
+                startProgressPolling();
+              } else if (ev.data === YT.PlayerState.PAUSED) {
+                setPlayingUIState(false);
+              } else if (ev.data === YT.PlayerState.ENDED) {
+                handleTrackEnded();
+              }
+            }
+          }
+        });
+      } else {
+        ytPlayerInstance = null;
+        setPlayingUIState(true);
+        document.getElementById('ytPlayerMount').innerHTML = `
+          <iframe id="fallbackIframe" class="w-full h-full border-0"
+            src="${host}/embed/${encodeURIComponent(videoId)}?autoplay=1&playsinline=1&enablejsapi=1&rel=0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen></iframe>
+        `;
+      }
+    }
+
+    function startProgressPolling() {
+      if (progressPollTimer) clearInterval(progressPollTimer);
+      progressPollTimer = setInterval(() => {
+        if (!ytPlayerInstance || typeof ytPlayerInstance.getCurrentTime !== 'function') return;
+        const cur = ytPlayerInstance.getCurrentTime() || 0;
+        const dur = ytPlayerInstance.getDuration() || 0;
+        if (dur > 0) {
+          const pct = Math.min(100, Math.max(0, (cur / dur) * 100));
+          document.getElementById('miniProgressBar').style.width = `${pct}%`;
+          if (!isSeeking) {
+            const slider = document.getElementById('musicSeekSlider');
+            slider.value = pct;
+            updateSeekBarFill(pct);
+            document.getElementById('musicCurrentTime').innerText = formatSeconds(cur);
+          }
+          document.getElementById('musicDurationTime').innerText = formatSeconds(dur);
+        }
+      }, 500);
+    }
+
+    function updateSeekBarFill(pct) {
+      const slider = document.getElementById('musicSeekSlider');
+      slider.style.background = `linear-gradient(to right, #ef4444 ${pct}%, rgba(255,255,255,0.14) ${pct}%)`;
+    }
+
+    function onSeekInput(pctVal) {
+      isSeeking = true;
+      const pct = parseFloat(pctVal) || 0;
+      updateSeekBarFill(pct);
+      if (ytPlayerInstance && typeof ytPlayerInstance.getDuration === 'function') {
+        const dur = ytPlayerInstance.getDuration() || 0;
+        if (dur > 0) document.getElementById('musicCurrentTime').innerText = formatSeconds((pct / 100) * dur);
+      }
+    }
+
+    function onSeekCommit(pctVal) {
+      const pct = parseFloat(pctVal) || 0;
+      if (ytPlayerInstance && typeof ytPlayerInstance.getDuration === 'function') {
+        const dur = ytPlayerInstance.getDuration() || 0;
+        if (dur > 0) ytPlayerInstance.seekTo((pct / 100) * dur, true);
+      }
+      isSeeking = false;
+    }
+
+    function onVolumeChange(val) {
+      const v = parseInt(val, 10);
+      document.getElementById('musicVolumeSlider').style.background = `linear-gradient(to right, #ffffff ${v}%, rgba(255,255,255,0.16) ${v}%)`;
+      if (ytPlayerInstance && typeof ytPlayerInstance.setVolume === 'function') {
+        if (v > 0 && isMuted) { ytPlayerInstance.unMute(); isMuted = false; }
+        ytPlayerInstance.setVolume(v);
+      }
+    }
+
+    function toggleMute() {
+      if (!ytPlayerInstance || typeof ytPlayerInstance.isMuted !== 'function') return;
+      if (ytPlayerInstance.isMuted()) {
+        ytPlayerInstance.unMute();
+        isMuted = false;
+        onVolumeChange(document.getElementById('musicVolumeSlider').value || 100);
+      } else {
+        ytPlayerInstance.mute();
+        isMuted = true;
+        document.getElementById('musicVolumeSlider').style.background = `linear-gradient(to right, #ffffff 0%, rgba(255,255,255,0.16) 0%)`;
+      }
+    }
+
+    function setPlayingUIState(playing) {
+      isPlayerPlaying = playing;
+      const pauseSvg = `<svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
+      const playSvg = `<svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`;
+      const mainPauseSvg = `<svg class="w-7 h-7 fill-current" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
+      const mainPlaySvg = `<svg class="w-7 h-7 fill-current ml-0.5" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`;
+
+      document.getElementById('miniPlayBtn').innerHTML = playing ? pauseSvg : playSvg;
+      document.getElementById('musicMainPlayBtn').innerHTML = playing ? mainPauseSvg : mainPlaySvg;
+
+      const art = document.getElementById('musicAlbumArt');
+      art.classList.toggle('music-art-playing', playing);
+      art.classList.toggle('music-art-paused', !playing);
+
+      const wave = document.getElementById('musicAudioWave');
+      if (wave) wave.classList.toggle('playing', playing);
+    }
+
+    function pauseActivePlayer() {
+      setPlayingUIState(false);
+      if (ytPlayerInstance && typeof ytPlayerInstance.pauseVideo === 'function') {
+        ytPlayerInstance.pauseVideo();
+        return;
+      }
+      const iframe = document.getElementById('fallbackIframe');
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+      }
+    }
+
+    function playActivePlayer() {
+      setPlayingUIState(true);
+      if (ytPlayerInstance && typeof ytPlayerInstance.playVideo === 'function') {
+        ytPlayerInstance.playVideo();
+        return;
+      }
+      const iframe = document.getElementById('fallbackIframe');
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+      }
+    }
+
+    function togglePlayPause() {
+      if (isPlayerPlaying) pauseActivePlayer();
+      else playActivePlayer();
+    }
+
+    function toggleShuffle() {
+      isShuffle = !isShuffle;
+      document.getElementById('btnShuffle').className = isShuffle
+        ? 'p-2 text-red-400 bg-white/10 transition rounded-full'
+        : 'p-2 text-zinc-400 hover:text-white transition rounded-full';
+    }
+
+    function toggleRepeat() {
+      repeatMode = (repeatMode + 1) % 3;
+      const btn = document.getElementById('btnRepeat');
+      if (repeatMode === 0) {
+        btn.className = 'p-2 text-zinc-400 hover:text-white transition rounded-full relative';
+        btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 1l4 4-4 4"/><path stroke-linecap="round" stroke-linejoin="round" d="M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 13v2a4 4 0 01-4 4H3"/></svg>`;
+      } else if (repeatMode === 1) {
+        btn.className = 'p-2 text-red-400 bg-white/10 transition rounded-full relative';
+      } else {
+        btn.className = 'p-2 text-red-400 bg-white/10 transition rounded-full relative';
+        btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 1l4 4-4 4"/><path stroke-linecap="round" stroke-linejoin="round" d="M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 13v2a4 4 0 01-4 4H3"/></svg><span class="absolute -top-0.5 -right-0.5 text-[8px] bg-red-600 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">1</span>`;
+      }
+    }
+
+    function handleTrackEnded() {
+      if (repeatMode === 2 && ytPlayerInstance && typeof ytPlayerInstance.seekTo === 'function') {
+        ytPlayerInstance.seekTo(0, true);
+        ytPlayerInstance.playVideo();
+        return;
+      }
+      playNextTrack(true);
+    }
+
+    function getOrderedQueue() {
+      const base = currentQueueIds.length > 0 ? currentQueueIds : Array.from(videoRegistry.keys());
+      return base.filter(id => videoRegistry.has(id));
+    }
+
+    function playNextTrack(fromAutoEnd = false) {
+      const q = getOrderedQueue();
+      if (q.length === 0) return;
+      if (isShuffle && q.length > 1) {
+        const others = q.filter(id => id !== currentVideoId);
+        openPlayerById(others[Math.floor(Math.random() * others.length)]);
+        return;
+      }
+      const idx = q.indexOf(currentVideoId);
+      if (idx >= 0 && idx < q.length - 1) openPlayerById(q[idx + 1]);
+      else if (!fromAutoEnd || repeatMode === 1) openPlayerById(q[0]);
+      else setPlayingUIState(false);
+    }
+
+    function playPrevTrack() {
+      if (ytPlayerInstance && typeof ytPlayerInstance.getCurrentTime === 'function' && ytPlayerInstance.getCurrentTime() > 4) {
+        ytPlayerInstance.seekTo(0, true);
+        return;
+      }
+      const q = getOrderedQueue();
+      if (q.length === 0) return;
+      const idx = q.indexOf(currentVideoId);
+      openPlayerById(q[idx > 0 ? idx - 1 : q.length - 1]);
+    }
+
+    async function toggleLyricsPanel() {
+      const panel = document.getElementById('lyricsOverlayPanel');
+      if (!panel.classList.contains('hidden')) {
+        panel.classList.add('hidden');
+        return;
+      }
+      panel.classList.remove('hidden');
+      const v = videoRegistry.get(currentVideoId);
+      if (v) await loadLyricsForVideo(v);
+    }
+
+    async function loadLyricsForVideo(v) {
+      const box = document.getElementById('lyricsContentBox');
+      box.innerText = 'Đang tìm lời bài hát...';
+      const cleanTitle = v.title
+        .replace(/\(.*?\)|\[.*?\]/g, '')
+        .replace(/official\s*(music\s*)?video|m\/v|mv|lyrics|audio|live\s*concert.*$/gi, '')
+        .replace(/[|•]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      try {
+        const res = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(cleanTitle)}`);
+        if (res.ok) {
+          const items = await res.json();
+          const match = (items || []).find(it => it.plainLyrics);
+          if (match && match.plainLyrics) {
+            box.innerText = match.plainLyrics;
+            return;
+          }
+        }
+      } catch (_) {}
+      box.innerText = v.desc || 'Chưa tìm thấy lời bài hát tự động cho bản thu này.';
+    }
+
+    function toggleMusicQueueSheet(show) {
+      document.getElementById('musicQueueSheet').classList.toggle('hidden', !show);
+    }
+
+    // =========================================================================
+    // 7. "+ PLAYLIST" MODAL & FULL PLAYLIST MANAGEMENT
+    // =========================================================================
+    function openPlaylistModal() {
+      if (!currentVideoId) return;
+      renderPlaylistModalItems();
+      document.getElementById('playlistModal').classList.remove('hidden');
+    }
+
+    function closePlaylistModal() {
+      document.getElementById('playlistModal').classList.add('hidden');
+    }
+
+    function renderPlaylistModalItems() {
+      const listEl = document.getElementById('playlistModalList');
+      if (playlists.length === 0) {
+        listEl.innerHTML = `<p class="text-xs text-zinc-400 py-4 text-center">Chưa có danh sách phát nào. Hãy tạo ở bên dưới!</p>`;
+        return;
+      }
+      listEl.innerHTML = playlists.map(pl => {
+        const hasTrack = (pl.items || []).some(it => it.id === currentVideoId);
+        return `
+          <div onclick="toggleTrackInPlaylist('${escapeHTML(pl.id)}')" class="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 cursor-pointer transition">
+            <div class="min-w-0">
+              <p class="text-xs font-semibold text-white truncate">${escapeHTML(pl.name)}</p>
+              <p class="text-[10px] text-zinc-400">${(pl.items || []).length} bài</p>
+            </div>
+            <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${hasTrack ? 'bg-red-600 text-white' : 'bg-white/10 text-zinc-400'}">
+              ${hasTrack ? '✓' : '+'}
+            </span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function toggleTrackInPlaylist(plId) {
+      const v = videoRegistry.get(currentVideoId);
+      const pl = playlists.find(p => p.id === plId);
+      if (!v || !pl) return;
+      pl.items = pl.items || [];
+      const idx = pl.items.findIndex(it => it.id === v.id);
+      if (idx >= 0) pl.items.splice(idx, 1);
+      else pl.items.unshift(v);
+      saveLibraryState();
+      renderPlaylistModalItems();
+      if (currentLibTab === 'pl') renderLibrary();
+    }
+
+    function createPlaylistFromInput() {
+      const input = document.getElementById('newPlaylistNameInput');
+      const name = input.value.trim();
+      if (!name) return;
+      const v = videoRegistry.get(currentVideoId);
+      const newPl = {
+        id: 'pl_' + Date.now(),
+        name: name,
+        items: v ? [v] : []
+      };
+      playlists.unshift(newPl);
+      input.value = '';
+      saveLibraryState();
+      renderPlaylistModalItems();
+      if (currentLibTab === 'pl') renderLibrary();
+    }
+
+    function promptCreateNewPlaylist() {
+      const name = prompt('Nhập tên Danh sách phát (Playlist) mới:');
+      if (!name || !name.trim()) return;
+      playlists.unshift({ id: 'pl_' + Date.now(), name: name.trim(), items: [] });
+      saveLibraryState();
+      renderLibrary();
+    }
+
+    // =========================================================================
+    // 8. YOUTUBE ZOOM MINIMIZE / RESTORE & DRAG GESTURE
+    // =========================================================================
+    function setMiniBarVisible(visible) {
+      const bar = document.getElementById('miniPlayerBar');
+      bar.classList.toggle('mini-visible', visible);
+      bar.classList.toggle('mini-hidden', !visible);
+    }
+
+    function minimizePlayer() {
+      if (!currentVideoId) return;
+      toggleMusicQueueSheet(false);
+      closePlaylistModal();
+      const overlay = document.getElementById('playerOverlay');
+      overlay.style.transform = '';
+      overlay.classList.remove('player-expanded', 'dragging');
+      overlay.classList.add('player-minimized');
+      setMiniBarVisible(true);
+    }
+
+    function restorePlayer() {
+      if (!currentVideoId) return;
+      const overlay = document.getElementById('playerOverlay');
+      overlay.style.transform = '';
+      overlay.classList.remove('player-minimized', 'player-closed', 'dragging');
+      overlay.classList.add('player-expanded');
+      setMiniBarVisible(false);
+    }
+
+    function closePlayerCompletely() {
+      currentVideoId = null;
+      setPlayingUIState(false);
+      if (progressPollTimer) { clearInterval(progressPollTimer); progressPollTimer = null; }
+      if (ytPlayerInstance && typeof ytPlayerInstance.destroy === 'function') ytPlayerInstance.destroy();
+      ytPlayerInstance = null;
+      document.getElementById('ytPlayerMount').innerHTML = '';
+
+      const overlay = document.getElementById('playerOverlay');
+      overlay.style.transform = '';
+      overlay.classList.remove('player-expanded', 'player-minimized', 'dragging');
+      overlay.classList.add('player-closed');
+      setMiniBarVisible(false);
+    }
+
+    (function setupPlayerDragGesture() {
+      const header = document.getElementById('playerDragHeader');
+      const overlay = document.getElementById('playerOverlay');
+      let startY = 0;
+      let currentDeltaY = 0;
+      let dragging = false;
+
+      const onStart = (clientY, target) => {
+        if (target.closest('button')) return;
+        startY = clientY;
+        currentDeltaY = 0;
+        dragging = true;
+        overlay.classList.add('dragging');
+      };
+      const onMove = (clientY) => {
+        if (!dragging) return;
+        currentDeltaY = Math.max(0, clientY - startY);
+        const progress = Math.min(1, currentDeltaY / 380);
+        overlay.style.transform = `translateY(${currentDeltaY}px) scale(${1 - progress * 0.1})`;
+        overlay.style.borderRadius = `${progress * 32}px`;
+      };
+      const onEnd = () => {
+        if (!dragging) return;
+        dragging = false;
+        overlay.classList.remove('dragging');
+        overlay.style.borderRadius = '';
+        if (currentDeltaY > 95) minimizePlayer();
+        else overlay.style.transform = '';
+      };
+
+      header.addEventListener('mousedown', e => onStart(e.clientY, e.target));
+      window.addEventListener('mousemove', e => onMove(e.clientY));
+      window.addEventListener('mouseup', onEnd);
+      header.addEventListener('touchstart', e => { if (e.touches[0]) onStart(e.touches[0].clientY, e.target); }, { passive: true });
+      window.addEventListener('touchmove', e => { if (e.touches[0]) onMove(e.touches[0].clientY); }, { passive: true });
+      window.addEventListener('touchend', onEnd);
+    })();
+
+    function renderUpNext(excludeId) {
+      const ids = getOrderedQueue().filter(id => id !== excludeId);
+      const list = (ids.length > 0 ? ids.map(id => videoRegistry.get(id)) : Array.from(videoRegistry.values()).filter(v => v.id !== excludeId))
+        .filter(Boolean)
+        .slice(0, 8);
+
+      const html = list.map(v => `
+        <div onclick="toggleMusicQueueSheet(false); openPlayerById('${escapeHTML(v.id)}')" class="yt-card-anim flex gap-2.5 cursor-pointer hover:opacity-85 p-1.5 rounded-xl bg-white/[0.04] border border-white/10">
+          <div class="relative w-24 aspect-video rounded-lg overflow-hidden bg-zinc-900 shrink-0">
+            <img src="${escapeHTML(v.thumb)}" loading="lazy" class="w-full h-full object-cover" alt="">
+            ${v.duration ? `<span class="absolute bottom-1 right-1 bg-black/80 text-white px-1 rounded text-[8px]">${escapeHTML(v.duration)}</span>` : ''}
+          </div>
+          <div class="flex-1 min-w-0">
+            <h5 class="text-xs font-medium text-white line-clamp-2 leading-snug">${escapeHTML(v.title)}</h5>
+            <p class="text-[10px] text-zinc-400 mt-0.5 truncate">${escapeHTML(v.channel)}</p>
+          </div>
+        </div>
+      `).join('');
+
+      document.getElementById('upNextList').innerHTML = html;
+      document.getElementById('musicUpNextList').innerHTML = html;
+    }
+
+    function copyCurrentVideoLink() {
+      if (!currentVideoId) return;
+      navigator.clipboard?.writeText(`https://www.youtube.com/watch?v=${currentVideoId}`);
+      const lbl = document.getElementById('copyBtnLabel');
+      lbl.innerText = 'Đã chép';
+      setTimeout(() => { lbl.innerText = 'Sao chép'; }, 1800);
+    }
+
+    // =========================================================================
+    // 9. LIBRARY (FAVORITES | PLAYLISTS | HISTORY), SLEEP TIMER & THEME
+    // =========================================================================
+    function toggleFavoriteCurrent() {
+      if (!currentVideoId) return;
+      const v = videoRegistry.get(currentVideoId);
+      if (!v) return;
+      const idx = favorites.findIndex(f => f.id === v.id);
+      if (idx >= 0) favorites.splice(idx, 1);
+      else favorites.unshift(v);
+      saveLibraryState();
+      updateFavButton();
+      renderLibrary();
+    }
+
+    function updateFavButton() {
+      const isFav = favorites.some(f => f.id === currentVideoId);
+      const filledSvg = `<svg class="w-4 h-4 text-red-500 fill-current drop-shadow-[0_0_6px_rgba(239,68,68,0.7)]" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
+      const outlineSvg = `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>`;
+
+      document.getElementById('btnFavOverlay').innerHTML = isFav ? filledSvg : outlineSvg;
+      document.getElementById('musicHeartBtn').innerHTML = isFav ? filledSvg : outlineSvg;
+      document.getElementById('videoFavIcon').innerText = isFav ? '♥' : '♡';
+      document.getElementById('actionFavLabel').innerText = isFav ? 'Đã thích' : 'Yêu thích';
+    }
+
+    function setLibraryTab(tab) {
+      currentLibTab = tab;
+      activePlaylistViewId = null;
+      ['fav', 'pl', 'hist'].forEach(t => {
+        const btn = document.getElementById('btnLib' + t.charAt(0).toUpperCase() + t.slice(1));
+        btn.className = (t === tab)
+          ? 'py-1.5 rounded-lg bg-red-600 text-white transition'
+          : 'py-1.5 rounded-lg app-muted transition';
+      });
+      renderLibrary();
+    }
+
+    function openPlaylistDetail(plId) {
+      activePlaylistViewId = plId;
+      renderLibrary();
+    }
+
+    function deletePlaylist(event, plId) {
+      event.stopPropagation();
+      playlists = playlists.filter(p => p.id !== plId);
+      saveLibraryState();
+      renderLibrary();
+    }
+
+    function removeLibraryItem(event, id) {
+      event.stopPropagation();
+      if (currentLibTab === 'fav') favorites = favorites.filter(v => v.id !== id);
+      else if (currentLibTab === 'hist') history = history.filter(v => v.id !== id);
+      else if (currentLibTab === 'pl' && activePlaylistViewId) {
+        const pl = playlists.find(p => p.id === activePlaylistViewId);
+        if (pl) pl.items = (pl.items || []).filter(v => v.id !== id);
+      }
+      saveLibraryState();
+      updateFavButton();
+      renderLibrary();
+    }
+
+    function clearWatchHistory() {
+      history = [];
+      saveLibraryState();
+      renderLibrary();
+    }
+
+    function renderLibrary() {
+      const container = document.getElementById('libraryList');
+      const headerActions = document.getElementById('libHeaderActions');
+      const subLabel = document.getElementById('libSubLabel');
+      const btnClearHist = document.getElementById('btnClearHist');
+      const btnNewPl = document.getElementById('btnNewPlLib');
+
+      btnClearHist.classList.add('hidden');
+      btnNewPl.classList.add('hidden');
+
+      if (currentLibTab === 'pl' && !activePlaylistViewId) {
+        headerActions.classList.remove('hidden');
+        subLabel.innerText = `${playlists.length} danh sách phát`;
+        btnNewPl.classList.remove('hidden');
+
+        if (playlists.length === 0) {
+          container.innerHTML = `<div class="text-center py-12 text-xs app-muted">Chưa có Playlist nào. Bấm "+ Tạo Playlist mới" hoặc nút "+ Playlist" khi nghe nhạc!</div>`;
+          return;
+        }
+        container.innerHTML = playlists.map(pl => {
+          const cover = pl.items?.[0]?.thumb || 'https://i.ytimg.com/vi/Llw9Q6akRo4/hqdefault.jpg';
+          return `
+            <div onclick="openPlaylistDetail('${escapeHTML(pl.id)}')" class="yt-card-anim flex items-center gap-3 cursor-pointer p-2 rounded-xl app-surface border app-border">
+              <img src="${escapeHTML(cover)}" class="w-16 h-16 rounded-xl object-cover bg-zinc-900 shrink-0" alt="">
+              <div class="flex-1 min-w-0">
+                <h4 class="text-xs font-bold app-text truncate">${escapeHTML(pl.name)}</h4>
+                <p class="text-[11px] app-muted mt-0.5">${(pl.items || []).length} bài hát / video</p>
+              </div>
+              <button onclick="deletePlaylist(event, '${escapeHTML(pl.id)}')" title="Xóa Playlist" class="p-1.5 app-muted hover:text-red-500 text-xs">✕</button>
+            </div>
+          `;
+        }).join('');
+        return;
+      }
+
+      let list = [];
+      if (currentLibTab === 'pl' && activePlaylistViewId) {
+        const pl = playlists.find(p => p.id === activePlaylistViewId);
+        headerActions.classList.remove('hidden');
+        subLabel.innerHTML = `<button onclick="activePlaylistViewId=null; renderLibrary();" class="text-red-400 hover:underline">← Tất cả Playlist</button> • <b>${escapeHTML(pl?.name || '')}</b>`;
+        list = pl?.items || [];
+        if (list.length > 0) currentQueueIds = list.map(v => v.id);
+      } else if (currentLibTab === 'fav') {
+        headerActions.classList.add('hidden');
+        list = favorites;
+      } else {
+        headerActions.classList.toggle('hidden', history.length === 0);
+        subLabel.innerText = 'Đã xem gần đây';
+        btnClearHist.classList.toggle('hidden', history.length === 0);
+        list = history;
+      }
+
+      if (list.length === 0) {
+        container.innerHTML = `<div class="text-center py-12 text-xs app-muted">Danh sách này đang trống.</div>`;
+        return;
+      }
+
+      container.innerHTML = list.map(v => {
+        videoRegistry.set(v.id, v);
+        return `
+          <div onclick="openPlayerById('${escapeHTML(v.id)}')" class="yt-card-anim flex items-center gap-2.5 cursor-pointer hover:opacity-90 p-1.5 rounded-xl app-surface border app-border">
+            <img src="${escapeHTML(v.thumb)}" loading="lazy" class="w-24 aspect-video rounded-lg object-cover bg-zinc-900 shrink-0" alt="">
+            <div class="flex-1 min-w-0">
+              <h4 class="text-xs font-semibold app-text line-clamp-2 leading-snug">${escapeHTML(v.title)}</h4>
+              <p class="text-[10px] app-muted mt-0.5 truncate">${escapeHTML(v.channel)}${v.duration ? ` • ${escapeHTML(v.duration)}` : ''}</p>
+            </div>
+            <button onclick="removeLibraryItem(event, '${escapeHTML(v.id)}')" title="Xóa" class="p-1.5 app-muted hover:text-red-500 shrink-0 text-xs">✕</button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function switchTab(tab, focusInput = false) {
+      const overlay = document.getElementById('playerOverlay');
+      if (overlay.classList.contains('player-expanded') && currentVideoId) minimizePlayer();
+
+      ['home', 'search', 'library', 'settings'].forEach(t => {
+        document.getElementById('tab-' + t).classList.add('hidden');
+        const btn = document.getElementById('tabBtn-' + t);
+        btn.classList.remove('text-red-500');
+        btn.classList.add('app-muted');
+      });
+
+      document.getElementById('tab-' + tab).classList.remove('hidden');
+      const activeBtn = document.getElementById('tabBtn-' + tab);
+      activeBtn.classList.add('text-red-500');
+      activeBtn.classList.remove('app-muted');
+
+      if (tab === 'library') renderLibrary();
+      if (tab === 'search') {
+        if (!document.getElementById('searchInput').value.trim()) renderSearchIdle();
+        if (focusInput) setTimeout(() => document.getElementById('searchInput').focus(), 50);
+      }
+    }
+
+    async function saveAndTestApiKey() {
+      const val = document.getElementById('apiKeyInput').value.trim();
+      userApiKey = val;
+      localStorage.setItem('ytplayer_api_key', val);
+      apiCache.clear();
+      const ok = await verifyApiKey(val);
+      if (ok) loadHomeFeed(true);
+    }
+
+    async function resetDefaultApiKey() {
+      userApiKey = DEFAULT_CONFIG_KEY;
+      localStorage.setItem('ytplayer_api_key', userApiKey);
+      document.getElementById('apiKeyInput').value = userApiKey;
+      apiCache.clear();
+      await verifyApiKey(userApiKey);
+    }
+
+    function toggleSleepTimer() {
+      const btn = document.getElementById('timerBtn');
+      const text = document.getElementById('timerStatusText');
+      const badge = document.getElementById('headerTimerBadge');
+
+      if (sleepTimerInterval) {
+        clearInterval(sleepTimerInterval);
+        sleepTimerInterval = null;
+        sleepRemainingSeconds = 0;
+        btn.innerText = 'Bắt đầu hẹn giờ';
+        btn.className = 'bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg font-medium text-[11px] shrink-0 transition';
+        text.innerText = 'Đã hủy hẹn giờ tắt.';
+        badge.classList.add('hidden');
+        return;
+      }
+
+      const mins = parseInt(document.getElementById('sleepMinutesSelect').value, 10) || 30;
+      sleepRemainingSeconds = mins * 60;
+      btn.innerText = 'Hủy hẹn giờ';
+      btn.className = 'bg-zinc-700 hover:bg-zinc-600 text-white px-3 py-1.5 rounded-lg font-medium text-[11px] shrink-0 transition';
+      badge.classList.remove('hidden');
+
+      const updateTickUI = () => {
+        const m = String(Math.floor(sleepRemainingSeconds / 60)).padStart(2, '0');
+        const s = String(sleepRemainingSeconds % 60).padStart(2, '0');
+        text.innerHTML = `<span class="text-red-400 font-semibold font-mono">Tự động tạm dừng sau: ${m}:${s}</span>`;
+        badge.innerText = `⏰ ${m}:${s}`;
+      };
+
+      updateTickUI();
+      sleepTimerInterval = setInterval(() => {
+        sleepRemainingSeconds -= 1;
+        if (sleepRemainingSeconds <= 0) {
+          clearInterval(sleepTimerInterval);
+          sleepTimerInterval = null;
+          pauseActivePlayer();
+          btn.innerText = 'Bắt đầu hẹn giờ';
+          btn.className = 'bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg font-medium text-[11px] shrink-0 transition';
+          text.innerHTML = `<span class="text-emerald-400 font-semibold">✓ Đã hết giờ — Trình phát đã được tạm dừng!</span>`;
+          badge.classList.add('hidden');
+        } else {
+          updateTickUI();
+        }
+      }, 1000);
+    }
+
+    function setTheme(dark) {
+      isDarkMode = dark;
+      localStorage.setItem('ytplayer_dark_mode', dark ? 'true' : 'false');
+      document.getElementById('appShell').classList.toggle('light-theme', !dark);
+      document.getElementById('darkModeToggle').checked = dark;
+    }
+
+    function toggleTheme() { setTheme(!isDarkMode); }
+    function toggleWideMode() { document.getElementById('appShell').classList.toggle('wide-mode'); }
+    function savePrivacyPref(enabled) {
+      usePrivacyEmbed = enabled;
+      localStorage.setItem('ytplayer_privacy_embed', enabled ? 'true' : 'false');
+    }
+
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('clock').innerText =
+        String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    }
+
+    (async function initApp() {
+      updateClock();
+      setInterval(updateClock, 10000);
+
+      document.getElementById('apiKeyInput').value = userApiKey;
+      document.getElementById('privacyEmbedToggle').checked = usePrivacyEmbed;
+      setTheme(isDarkMode);
+      setPlayerMode(playerMode);
+      saveLibraryState();
+
+      await verifyApiKey(userApiKey);
+      await loadHomeFeed(false);
+      renderSearchIdle();
+    })();
+  </script>
+</body>
+</html>
