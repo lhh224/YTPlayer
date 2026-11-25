@@ -71,3 +71,11 @@
   - Nút "Thu nhỏ" đóng hẳn trình phát thay vì thu nhỏ thành Mini Player; Sleep Timer đứng yên ở `29:59`; Light Mode bị chữ trắng trên nền sáng.
 - **Cách sửa:** Chuyển sang định danh `videoRegistry` (`openPlayerById`), bổ sung Mini Player giữ nhạc phát liên tục, hoàn thiện bộ đếm ngược Sleep Timer tự động dừng YouTube IFrame Player khi về `00:00`, lưu `localStorage` cho Yêu thích/Lịch sử và đồng bộ CSS variables cho Light/Dark Mode.
 - **Trạng thái:** 🟢 Fixed
+
+
+---
+
+## Cập nhật v2.1.0 (2026-11-25)
+- **Vấn đề 1:** Khi mở Control Center sau khi thoát WebClip trên iPhone bị báo `"Không phát"` do trang chính không giữ `AVAudioSession` trực tiếp (chỉ có iframe chéo miền).
+  - **Cách xử lý:** Bổ sung bộ tạo luồng âm thanh giữ phiên (`keepAliveAudio` PCM WAV siêu nhỏ chạy ở frame chính khi bật *Phát trong nền*) kết hợp `navigator.mediaSession.setPositionState` và tự kích hoạt lại `playVideo()` khi hệ thống vừa ẩn trang. *(Lưu ý giới hạn WebKit iOS: Safari/WebClip vẫn có thể tạm ngưng giải mã thẻ `<video>` bên trong iframe YouTube chéo miền khi tắt màn hình tùy phiên bản iOS).*
+- **Vấn đề 2:** Cập nhật toàn bộ màn hình Cài đặt `v2.1.0` (Phát trong nền, Chế độ mở mặc định Music/Video, Tự động phát tiếp theo, Chất lượng phát, Hẹn giờ 15p/30p/45p/60p, Giao diện tối, Đo & xóa bộ nhớ đệm thực tế) và cơ chế `no-cache` revalidate trong `sw.js` để Profile App trên iPhone nhận ngay bản mới.

@@ -20,3 +20,4 @@
 | **Giai đoạn 6** | Thư viện & Tính năng nâng cao | ✅ Hoàn thành | LibraryView (Favorites & Watch History lưu bền vững), SleepTimer đếm ngược thực tế tự dừng phát. |
 | **Giai đoạn 7** | Lọc nội dung & Bảo vệ (Content Filtering) | ✅ Hoàn thành | ContentFilterService gắn trực tiếp vào WKWebView & tùy chọn nhúng bảo mật `youtube-nocookie`. |
 | **Giai đoạn 8** | Kiểm thử biên dịch toàn diện & Đóng gói | ✅ Hoàn thành | `swiftc -typecheck` 39/39 file Swift đạt 0 lỗi, 39/39 bài kiểm thử tự động đạt 100%, sửa sạch đường dẫn `YTPlayer.xcodeproj`. |
+| **Giai đoạn 9** | Cài đặt v2.1.0, Giữ phiên MediaSession & iOS Profile | ✅ Hoàn thành | Giao diện Cài đặt v2.1.0 đầy đủ chức năng thật (Background Play keep-alive, Chế độ mở mặc định, Tự phát tiếp, Chất lượng phát, Hẹn giờ 15p-60p, Đo & xóa bộ nhớ đệm thật) + triển khai lên Profile App iPhone (`YTPlayer.mobileconfig` / GitHub Pages). |

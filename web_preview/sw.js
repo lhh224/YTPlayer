@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ytplayer-pwa-v3';
+const CACHE_NAME = 'ytplayer-pwa-v5';
 const APP_SHELL = [
   './',
   './index.html',
@@ -12,7 +12,15 @@ const APP_SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).catch(() => {})
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.all(
+        APP_SHELL.map((url) =>
+          fetch(url, { cache: 'no-cache' })
+            .then((resp) => (resp.ok ? cache.put(url, resp) : undefined))
+            .catch(() => {})
+        )
+      )
+    )
   );
   self.skipWaiting();
 });
@@ -30,9 +38,10 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+
   if (url.pathname.endsWith('.mobileconfig')) {
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: 'no-cache' })
         .catch(() => caches.match(event.request))
         .then((resp) => resp.arrayBuffer())
         .then((buf) => new Response(buf, {
@@ -42,7 +51,18 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
+
+  // Always revalidate HTML documents so the installed iPhone Profile App gets updates immediately
+  const isHTML = event.request.mode === 'navigate' || url.pathname.endsWith('/') || url.pathname.endsWith('.html');
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    fetch(event.request, isHTML ? { cache: 'no-cache' } : undefined)
+      .then((resp) => {
+        if (resp && resp.ok) {
+          const copy = resp.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
+        }
+        return resp;
+      })
+      .catch(() => caches.match(event.request))
   );
 });

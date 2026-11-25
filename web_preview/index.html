@@ -78,6 +78,9 @@
       padding-top: env(safe-area-inset-top, 0px);
       height: calc(2.75rem + env(safe-area-inset-top, 0px));
     }
+    body.real-mobile-device #settingsTopHeader {
+      padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+    }
     body.real-mobile-device #playerOverlay {
       top: 0 !important;
       padding-top: env(safe-area-inset-top, 0px);
@@ -260,6 +263,54 @@
         0 6px 20px rgba(0, 0, 0, 0.5);
     }
 
+    /* Authentic iOS Red Switch & Settings Capsule Select (v2.1.0 Spec) */
+    .ios-switch {
+      position: relative;
+      display: inline-block;
+      width: 46px;
+      height: 27px;
+      flex-shrink: 0;
+    }
+    .ios-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .ios-switch-slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background-color: rgba(120, 120, 128, 0.36);
+      border-radius: 999px;
+      transition: background-color 0.22s ease;
+    }
+    .ios-switch-slider::before {
+      content: "";
+      position: absolute;
+      height: 23px;
+      width: 23px;
+      left: 2px;
+      bottom: 2px;
+      background-color: #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+      transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .ios-switch input:checked + .ios-switch-slider {
+      background-color: #dc2626;
+    }
+    .ios-switch input:checked + .ios-switch-slider::before {
+      transform: translateX(19px);
+    }
+    .settings-select {
+      -webkit-appearance: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='%23d4d4d8'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 26px;
+    }
+
     /* Faded Expandable Video Description Mask */
     .desc-collapsed {
       max-height: 76px;
@@ -404,63 +455,135 @@
         <div id="libraryList" class="space-y-2 pt-0.5"></div>
       </div>
 
-      <!-- TAB 4: SETTINGS -->
-      <div id="tab-settings" class="p-3 space-y-3.5 pb-20 hidden text-xs">
-        <div class="app-surface rounded-xl p-3 border app-border space-y-2.5">
-          <div class="flex items-center justify-between">
-            <h4 class="font-bold uppercase tracking-wider text-[10px] app-muted">Kết nối YouTube Data API v3</h4>
-            <span id="settingsApiBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-medium">Đang kiểm tra...</span>
-          </div>
-
-          <input type="text" id="apiKeyInput" placeholder="Dán khóa AIzaSy... của bạn vào đây" class="w-full app-surface-2 border app-border rounded-lg px-2.5 py-1.5 text-[11px] font-mono app-text focus:outline-none focus:border-red-500">
-
-          <div class="flex gap-2">
-            <button onclick="saveAndTestApiKey()" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-1.5 rounded-lg font-medium text-[11px] transition">
-              Lưu & Kiểm tra kết nối
+      <!-- TAB 4: SETTINGS (v2.1.0 Spec) -->
+      <div id="tab-settings" class="px-3.5 pb-24 hidden">
+        <!-- Settings Custom Top Header: Large "Cài đặt" + Search Icon + v2.1.0 -->
+        <div id="settingsTopHeader" class="flex items-center justify-between pt-3 pb-3.5">
+          <h1 class="text-[26px] font-bold tracking-tight app-text leading-none">Cài đặt</h1>
+          <div class="flex items-center gap-3 app-muted">
+            <button onclick="switchTab('search', true)" title="Tìm kiếm" class="p-1 hover:opacity-80 transition">
+              <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.2-5.2m1.7-4.3a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z"/></svg>
             </button>
-            <button onclick="resetDefaultApiKey()" title="Khôi phục khóa mặc định" class="px-2.5 py-1.5 app-surface-2 border app-border rounded-lg text-[11px] app-muted hover:opacity-80">
-              Mặc định
-            </button>
-          </div>
-
-          <div id="apiDiagnosticBox" class="rounded-lg p-2 app-surface-2 border app-border text-[10px] leading-relaxed app-muted space-y-1">
-            <p>Nhập khóa YouTube Data API v3 để tìm kiếm toàn bộ kho video YouTube trực tiếp.</p>
+            <span class="text-xs font-medium opacity-80">v2.1.0</span>
           </div>
         </div>
 
-        <div class="app-surface rounded-xl p-3 border app-border space-y-2.5">
-          <h4 class="font-bold uppercase tracking-wider text-[10px] app-muted">Giao diện</h4>
-          <div class="flex items-center justify-between">
-            <span class="app-text font-medium">Chế độ tối (Dark Mode #121214)</span>
-            <input type="checkbox" id="darkModeToggle" checked onchange="setTheme(this.checked)" class="w-4 h-4 accent-red-600 cursor-pointer">
-          </div>
-        </div>
+        <div class="space-y-3.5 text-[13.5px]">
+          <!-- CARD 1: PHÁT NHẠC & VIDEO -->
+          <div class="app-surface rounded-2xl p-4 border app-border space-y-3.5">
+            <h4 class="font-semibold uppercase tracking-wider text-[11px] app-muted">PHÁT NHẠC &amp; VIDEO</h4>
 
-        <div class="app-surface rounded-xl p-3 border app-border space-y-2.5">
-          <h4 class="font-bold uppercase tracking-wider text-[10px] app-muted">Hẹn giờ tắt nhạc/video (Sleep Timer)</h4>
-          <div class="flex items-center justify-between gap-2">
-            <select id="sleepMinutesSelect" class="app-surface-2 border app-border rounded-lg px-2.5 py-1.5 text-[11px] app-text focus:outline-none">
-              <option value="1">1 phút (Thử nhanh)</option>
-              <option value="15">15 phút</option>
-              <option value="30" selected>30 phút</option>
-              <option value="45">45 phút</option>
-              <option value="60">60 phút</option>
-            </select>
-            <button onclick="toggleSleepTimer()" id="timerBtn" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg font-medium text-[11px] shrink-0 transition">
+            <!-- Phát trong nền (Background Play) -->
+            <div class="space-y-1">
+              <div class="flex items-center justify-between gap-3">
+                <span class="font-medium app-text">Phát trong nền (Background Play)</span>
+                <label class="ios-switch">
+                  <input type="checkbox" id="bgPlayToggle" checked onchange="setBackgroundPlay(this.checked)">
+                  <span class="ios-switch-slider"></span>
+                </label>
+              </div>
+              <p class="text-[11.5px] leading-snug app-muted pr-6">Cho phép phát âm thanh khi tắt màn hình hoặc chuyển ứng dụng</p>
+            </div>
+
+            <!-- Chế độ mở mặc định -->
+            <div class="flex items-center justify-between gap-3 pt-0.5">
+              <span class="font-medium app-text">Chế độ mở mặc định</span>
+              <select id="defaultModeSelect" onchange="setDefaultOpenMode(this.value)" class="settings-select app-surface-2 border app-border rounded-xl px-3 py-1.5 text-[13px] font-medium app-text focus:outline-none cursor-pointer">
+                <option value="music">Music</option>
+                <option value="video">Video</option>
+              </select>
+            </div>
+
+            <!-- Tự động phát tiếp theo -->
+            <div class="flex items-center justify-between gap-3 pt-0.5">
+              <span class="font-medium app-text">Tự động phát tiếp theo</span>
+              <label class="ios-switch">
+                <input type="checkbox" id="autoplayNextToggle" checked onchange="setAutoplayNext(this.checked)">
+                <span class="ios-switch-slider"></span>
+              </label>
+            </div>
+
+            <!-- Chất lượng phát -->
+            <div class="flex items-center justify-between gap-3 pt-0.5">
+              <span class="font-medium app-text">Chất lượng phát</span>
+              <select id="playbackQualitySelect" onchange="setPlaybackQualityPref(this.value)" class="settings-select app-surface-2 border app-border rounded-xl px-3 py-1.5 text-[13px] font-medium app-text focus:outline-none cursor-pointer">
+                <option value="default">Tự động</option>
+                <option value="hd1080">1080p HD</option>
+                <option value="hd720">720p HD</option>
+                <option value="large">480p</option>
+                <option value="medium">360p</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- CARD 2: HẸN GIỜ TẮT NHẠC / VIDEO -->
+          <div class="app-surface rounded-2xl p-4 border app-border space-y-3">
+            <h4 class="font-semibold uppercase tracking-wider text-[11px] app-muted">HẸN GIỜ TẮT NHẠC / VIDEO</h4>
+
+            <div class="grid grid-cols-4 gap-2" id="sleepPillGroup">
+              <button type="button" onclick="selectSleepMinutes(15)" data-mins="15" class="sleep-pill py-2 rounded-full text-[13px] font-semibold app-surface-2 app-text transition">15p</button>
+              <button type="button" onclick="selectSleepMinutes(30)" data-mins="30" class="sleep-pill py-2 rounded-full text-[13px] font-semibold bg-[#dc2626] text-white transition">30p</button>
+              <button type="button" onclick="selectSleepMinutes(45)" data-mins="45" class="sleep-pill py-2 rounded-full text-[13px] font-semibold app-surface-2 app-text transition">45p</button>
+              <button type="button" onclick="selectSleepMinutes(60)" data-mins="60" class="sleep-pill py-2 rounded-full text-[13px] font-semibold app-surface-2 app-text transition">60p</button>
+            </div>
+
+            <button type="button" onclick="toggleSleepTimer()" id="timerBtn" class="w-full py-2.5 rounded-xl bg-[#dc2626] hover:bg-red-700 text-white font-semibold text-[14px] transition shadow-sm">
               Bắt đầu hẹn giờ
             </button>
-          </div>
-          <p id="timerStatusText" class="text-[11px] app-muted">Tự động tạm dừng trình phát khi hết giờ.</p>
-        </div>
 
-        <div class="app-surface rounded-xl p-3 border app-border space-y-2">
-          <h4 class="font-bold uppercase tracking-wider text-[10px] app-muted">Nội dung & Quyền riêng tư</h4>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="font-medium app-text">Chế độ nhúng bảo mật (youtube-nocookie)</p>
-              <p class="text-[10px] app-muted">Hạn chế cookie theo dõi bên thứ ba khi xem</p>
+            <p id="timerStatusText" class="text-[11.5px] app-muted">Tự động tạm dừng trình phát khi hết thời gian</p>
+          </div>
+
+          <!-- CARD 3: GIAO DIỆN & DỮ LIỆU -->
+          <div class="app-surface rounded-2xl p-4 border app-border space-y-3.5">
+            <h4 class="font-semibold uppercase tracking-wider text-[11px] app-muted">GIAO DIỆN &amp; DỮ LIỆU</h4>
+
+            <div class="flex items-center justify-between gap-3">
+              <span class="font-medium app-text">Giao diện tối (Dark Mode)</span>
+              <label class="ios-switch">
+                <input type="checkbox" id="darkModeToggle" checked onchange="setTheme(this.checked)">
+                <span class="ios-switch-slider"></span>
+              </label>
             </div>
-            <input type="checkbox" id="privacyEmbedToggle" onchange="savePrivacyPref(this.checked)" class="w-4 h-4 accent-red-600 cursor-pointer">
+
+            <div class="flex items-center justify-between gap-3 pt-0.5">
+              <span class="font-medium app-text" id="cacheSizeLabel">Bộ nhớ đệm (Đang tính...)</span>
+              <button type="button" onclick="clearAppCache()" id="btnClearCache" class="text-[#ef4444] hover:opacity-80 font-semibold text-[13.5px] transition">Xóa</button>
+            </div>
+          </div>
+
+          <!-- CARD 4: KẾT NỐI YOUTUBE DATA API V3 & NÂNG CAO -->
+          <div class="app-surface rounded-2xl p-4 border app-border space-y-2.5 text-xs">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold uppercase tracking-wider text-[11px] app-muted">YOUTUBE DATA API V3 &amp; NÂNG CAO</h4>
+              <span id="settingsApiBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-medium">Đang kiểm tra...</span>
+            </div>
+
+            <input type="text" id="apiKeyInput" placeholder="Dán khóa AIzaSy... của bạn vào đây" class="w-full app-surface-2 border app-border rounded-xl px-3 py-2 text-[11px] font-mono app-text focus:outline-none focus:border-red-500">
+
+            <div class="flex gap-2">
+              <button onclick="saveAndTestApiKey()" class="flex-1 bg-[#dc2626] hover:bg-red-700 text-white py-2 rounded-xl font-semibold text-[11.5px] transition">
+                Lưu &amp; Kiểm tra kết nối
+              </button>
+              <button onclick="resetDefaultApiKey()" title="Khôi phục khóa mặc định" class="px-3 py-2 app-surface-2 border app-border rounded-xl text-[11.5px] app-muted hover:opacity-80">
+                Mặc định
+              </button>
+            </div>
+
+            <div id="apiDiagnosticBox" class="rounded-xl p-2.5 app-surface-2 border app-border text-[10.5px] leading-relaxed app-muted space-y-1">
+              <p>Nhập khóa YouTube Data API v3 để tìm kiếm toàn bộ kho video YouTube trực tiếp.</p>
+            </div>
+
+            <div class="flex items-center justify-between pt-1.5 border-t app-border">
+              <div>
+                <p class="font-medium app-text text-[12.5px]">Nhúng bảo mật (youtube-nocookie)</p>
+                <p class="text-[10.5px] app-muted">Hạn chế cookie theo dõi bên thứ ba</p>
+              </div>
+              <label class="ios-switch">
+                <input type="checkbox" id="privacyEmbedToggle" onchange="savePrivacyPref(this.checked)">
+                <span class="ios-switch-slider"></span>
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -893,7 +1016,12 @@
 
     let isDarkMode = localStorage.getItem('ytplayer_dark_mode') !== 'false';
     let usePrivacyEmbed = localStorage.getItem('ytplayer_privacy_embed') === 'true';
-    let playerMode = localStorage.getItem('ytplayer_mode') || 'music'; // Default to Music showcase or saved preference
+    let bgPlayEnabled = localStorage.getItem('ytplayer_bg_play') !== 'false';
+    let defaultOpenMode = localStorage.getItem('ytplayer_default_mode') || 'music';
+    let autoplayNextEnabled = localStorage.getItem('ytplayer_autoplay_next') !== 'false';
+    let playbackQualityPref = localStorage.getItem('ytplayer_quality') || 'default';
+    let selectedSleepMinutes = parseInt(localStorage.getItem('ytplayer_sleep_mins') || '30', 10) || 30;
+    let playerMode = defaultOpenMode;
 
     let apiStatus = { ok: false, code: 0, message: 'Đang kiểm tra kết nối API...' };
     let currentVideoId = null;
@@ -1529,10 +1657,13 @@
       }
     }
 
-    function openPlayerById(videoId) {
+    function openPlayerById(videoId, preserveMode = false) {
       const v = videoRegistry.get(videoId);
       if (!v) return;
       currentVideoId = videoId;
+      if (!preserveMode) {
+        playerMode = defaultOpenMode;
+      }
 
       // Video Mode metadata
       document.getElementById('overlayTitle').innerText = v.title;
@@ -1595,11 +1726,59 @@
     }
 
     // =========================================================================
-    // Background / Lock-screen playback helpers (Media Session + auto-resume)
+    // Background / Lock-screen playback engine (iOS AudioSession Keep-Alive + MediaSession)
     // =========================================================================
     const IS_IOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || '') ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     let wasPlayingBeforeHidden = false;
+    let lastHiddenTimestamp = 0;
+    let userPausedManually = false;
+    let keepAliveAudio = null;
+
+    // Synthesize a tiny 1-second silent PCM WAV so the top-level document holds an active
+    // iOS AVAudioSession & MPNowPlayingInfoCenter (preventing Control Center "Không phát")
+    function getKeepAliveAudio() {
+      if (keepAliveAudio) return keepAliveAudio;
+      try {
+        const sampleRate = 8000;
+        const numSamples = sampleRate;
+        const buffer = new ArrayBuffer(44 + numSamples * 2);
+        const view = new DataView(buffer);
+        const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+        writeStr(0, 'RIFF');
+        view.setUint32(4, 36 + numSamples * 2, true);
+        writeStr(8, 'WAVE');
+        writeStr(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        writeStr(36, 'data');
+        view.setUint32(40, numSamples * 2, true);
+        // Imperceptible non-zero PCM sample so iOS never strips the audio session as digital zero
+        for (let i = 0; i < numSamples; i++) view.setInt16(44 + i * 2, (i % 2 === 0) ? 1 : -1, true);
+
+        const blob = new Blob([buffer], { type: 'audio/wav' });
+        keepAliveAudio = new Audio(URL.createObjectURL(blob));
+        keepAliveAudio.loop = true;
+        keepAliveAudio.volume = 0.01;
+        keepAliveAudio.setAttribute('playsinline', 'true');
+      } catch (_) {}
+      return keepAliveAudio;
+    }
+
+    function syncKeepAliveAudio(shouldPlay) {
+      const a = getKeepAliveAudio();
+      if (!a) return;
+      if (shouldPlay && bgPlayEnabled) {
+        a.play().catch(() => {});
+      } else {
+        try { a.pause(); } catch (_) {}
+      }
+    }
 
     function updateMediaSessionMetadata(v) {
       if (!('mediaSession' in navigator) || !v) return;
@@ -1617,29 +1796,55 @@
       } catch (_) {}
     }
 
+    function applyPreferredQuality() {
+      if (!ytPlayerInstance || typeof ytPlayerInstance.setPlaybackQuality !== 'function') return;
+      try {
+        ytPlayerInstance.setPlaybackQuality(playbackQualityPref || 'default');
+      } catch (_) {}
+    }
+
     (function setupBackgroundPlayback() {
       if ('mediaSession' in navigator) {
         const handlers = {
-          play: () => playActivePlayer(),
-          pause: () => pauseActivePlayer(),
+          play: () => { userPausedManually = false; playActivePlayer(); },
+          pause: () => { userPausedManually = true; pauseActivePlayer(); },
           nexttrack: () => playNextTrack(),
-          previoustrack: () => playPrevTrack()
+          previoustrack: () => playPrevTrack(),
+          seekto: (details) => {
+            if (details && typeof details.seekTime === 'number' && ytPlayerInstance && typeof ytPlayerInstance.seekTo === 'function') {
+              ytPlayerInstance.seekTo(details.seekTime, true);
+            }
+          }
         };
         Object.entries(handlers).forEach(([action, fn]) => {
           try { navigator.mediaSession.setActionHandler(action, fn); } catch (_) {}
         });
       }
 
-      // Remember play state when leaving the app, and resume automatically when coming back
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
-          wasPlayingBeforeHidden = isPlayerPlaying;
-        } else if (wasPlayingBeforeHidden) {
+          lastHiddenTimestamp = Date.now();
+          wasPlayingBeforeHidden = isPlayerPlaying && !userPausedManually;
+          if (!bgPlayEnabled && isPlayerPlaying) {
+            pauseActivePlayer();
+          } else if (bgPlayEnabled && wasPlayingBeforeHidden) {
+            syncKeepAliveAudio(true);
+            [250, 750, 1500].forEach((delay) => {
+              setTimeout(() => {
+                if (document.visibilityState === 'hidden' && bgPlayEnabled && wasPlayingBeforeHidden && !userPausedManually) {
+                  if (ytPlayerInstance && typeof ytPlayerInstance.playVideo === 'function') {
+                    ytPlayerInstance.playVideo();
+                  }
+                }
+              }, delay);
+            });
+          }
+        } else if (wasPlayingBeforeHidden && bgPlayEnabled && !userPausedManually) {
           setTimeout(() => {
             const state = ytPlayerInstance && typeof ytPlayerInstance.getPlayerState === 'function'
               ? ytPlayerInstance.getPlayerState() : null;
             if (state !== 1) playActivePlayer();
-          }, 350);
+          }, 250);
         }
       });
 
@@ -1678,15 +1883,29 @@
           },
           events: {
             onReady: () => {
+              userPausedManually = false;
+              applyPreferredQuality();
               setPlayingUIState(true);
+              syncKeepAliveAudio(true);
               startProgressPolling();
             },
             onStateChange: (ev) => {
               if (ev.data === YT.PlayerState.PLAYING) {
+                applyPreferredQuality();
                 setPlayingUIState(true);
+                syncKeepAliveAudio(true);
+                if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
                 startProgressPolling();
               } else if (ev.data === YT.PlayerState.PAUSED) {
+                // If system auto-paused on background transition while Background Play is ON, keep session & retry
+                if (document.visibilityState === 'hidden' && bgPlayEnabled && !userPausedManually && (Date.now() - lastHiddenTimestamp < 3000)) {
+                  setTimeout(() => {
+                    if (ytPlayerInstance && typeof ytPlayerInstance.playVideo === 'function') ytPlayerInstance.playVideo();
+                  }, 200);
+                  return;
+                }
                 setPlayingUIState(false);
+                if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
               } else if (ev.data === YT.PlayerState.ENDED) {
                 handleTrackEnded();
               }
@@ -1722,6 +1941,15 @@
             document.getElementById('musicCurrentTime').innerText = formatSeconds(cur);
           }
           document.getElementById('musicDurationTime').innerText = formatSeconds(dur);
+          if ('mediaSession' in navigator && typeof navigator.mediaSession.setPositionState === 'function') {
+            try {
+              navigator.mediaSession.setPositionState({
+                duration: dur,
+                playbackRate: 1,
+                position: Math.min(dur, Math.max(0, cur))
+              });
+            } catch (_) {}
+          }
         }
       }, 500);
     }
@@ -1796,7 +2024,10 @@
     }
 
     function pauseActivePlayer() {
+      userPausedManually = true;
       setPlayingUIState(false);
+      syncKeepAliveAudio(false);
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
       if (ytPlayerInstance && typeof ytPlayerInstance.pauseVideo === 'function') {
         ytPlayerInstance.pauseVideo();
         return;
@@ -1808,7 +2039,10 @@
     }
 
     function playActivePlayer() {
+      userPausedManually = false;
       setPlayingUIState(true);
+      syncKeepAliveAudio(true);
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
       if (ytPlayerInstance && typeof ytPlayerInstance.playVideo === 'function') {
         ytPlayerInstance.playVideo();
         return;
@@ -1851,6 +2085,11 @@
         ytPlayerInstance.playVideo();
         return;
       }
+      if (!autoplayNextEnabled) {
+        setPlayingUIState(false);
+        syncKeepAliveAudio(false);
+        return;
+      }
       playNextTrack(true);
     }
 
@@ -1864,13 +2103,16 @@
       if (q.length === 0) return;
       if (isShuffle && q.length > 1) {
         const others = q.filter(id => id !== currentVideoId);
-        openPlayerById(others[Math.floor(Math.random() * others.length)]);
+        openPlayerById(others[Math.floor(Math.random() * others.length)], true);
         return;
       }
       const idx = q.indexOf(currentVideoId);
-      if (idx >= 0 && idx < q.length - 1) openPlayerById(q[idx + 1]);
-      else if (!fromAutoEnd || repeatMode === 1) openPlayerById(q[0]);
-      else setPlayingUIState(false);
+      if (idx >= 0 && idx < q.length - 1) openPlayerById(q[idx + 1], true);
+      else if (!fromAutoEnd || repeatMode === 1) openPlayerById(q[0], true);
+      else {
+        setPlayingUIState(false);
+        syncKeepAliveAudio(false);
+      }
     }
 
     function playPrevTrack() {
@@ -1881,7 +2123,7 @@
       const q = getOrderedQueue();
       if (q.length === 0) return;
       const idx = q.indexOf(currentVideoId);
-      openPlayerById(q[idx > 0 ? idx - 1 : q.length - 1]);
+      openPlayerById(q[idx > 0 ? idx - 1 : q.length - 1], true);
     }
 
     function toggleMusicQueueSheet(show) {
@@ -2231,7 +2473,11 @@
       activeBtn.classList.add('text-red-500');
       activeBtn.classList.remove('app-muted');
 
+      // Show sleek dedicated Settings header on Cài đặt tab (matching v2.1.0 design)
+      document.getElementById('appHeader').classList.toggle('hidden', tab === 'settings');
+
       if (tab === 'library') renderLibrary();
+      if (tab === 'settings') refreshCacheSizeUI();
       if (tab === 'search') {
         if (!document.getElementById('searchInput').value.trim()) renderSearchIdle();
         if (focusInput) setTimeout(() => document.getElementById('searchInput').focus(), 50);
@@ -2255,6 +2501,43 @@
       await verifyApiKey(userApiKey);
     }
 
+    function setBackgroundPlay(enabled) {
+      bgPlayEnabled = !!enabled;
+      localStorage.setItem('ytplayer_bg_play', bgPlayEnabled ? 'true' : 'false');
+      syncKeepAliveAudio(isPlayerPlaying && bgPlayEnabled);
+    }
+
+    function setDefaultOpenMode(mode) {
+      defaultOpenMode = (mode === 'video') ? 'video' : 'music';
+      localStorage.setItem('ytplayer_default_mode', defaultOpenMode);
+      setPlayerMode(defaultOpenMode);
+    }
+
+    function setAutoplayNext(enabled) {
+      autoplayNextEnabled = !!enabled;
+      localStorage.setItem('ytplayer_autoplay_next', autoplayNextEnabled ? 'true' : 'false');
+    }
+
+    function setPlaybackQualityPref(qual) {
+      playbackQualityPref = qual || 'default';
+      localStorage.setItem('ytplayer_quality', playbackQualityPref);
+      applyPreferredQuality();
+    }
+
+    function selectSleepMinutes(mins) {
+      selectedSleepMinutes = parseInt(mins, 10) || 30;
+      localStorage.setItem('ytplayer_sleep_mins', String(selectedSleepMinutes));
+      document.querySelectorAll('#sleepPillGroup .sleep-pill').forEach(btn => {
+        const m = parseInt(btn.getAttribute('data-mins'), 10);
+        btn.className = (m === selectedSleepMinutes)
+          ? 'sleep-pill py-2 rounded-full text-[13px] font-semibold bg-[#dc2626] text-white transition'
+          : 'sleep-pill py-2 rounded-full text-[13px] font-semibold app-surface-2 app-text transition';
+      });
+      if (sleepTimerInterval) {
+        sleepRemainingSeconds = selectedSleepMinutes * 60;
+      }
+    }
+
     function toggleSleepTimer() {
       const btn = document.getElementById('timerBtn');
       const text = document.getElementById('timerStatusText');
@@ -2265,21 +2548,20 @@
         sleepTimerInterval = null;
         sleepRemainingSeconds = 0;
         btn.innerText = 'Bắt đầu hẹn giờ';
-        btn.className = 'bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg font-medium text-[11px] shrink-0 transition';
-        text.innerText = 'Đã hủy hẹn giờ tắt.';
+        btn.className = 'w-full py-2.5 rounded-xl bg-[#dc2626] hover:bg-red-700 text-white font-semibold text-[14px] transition shadow-sm';
+        text.innerText = 'Tự động tạm dừng trình phát khi hết thời gian';
         badge.classList.add('hidden');
         return;
       }
 
-      const mins = parseInt(document.getElementById('sleepMinutesSelect').value, 10) || 30;
-      sleepRemainingSeconds = mins * 60;
-      btn.innerText = 'Hủy hẹn giờ';
-      btn.className = 'bg-zinc-700 hover:bg-zinc-600 text-white px-3 py-1.5 rounded-lg font-medium text-[11px] shrink-0 transition';
+      sleepRemainingSeconds = selectedSleepMinutes * 60;
       badge.classList.remove('hidden');
 
       const updateTickUI = () => {
         const m = String(Math.floor(sleepRemainingSeconds / 60)).padStart(2, '0');
         const s = String(sleepRemainingSeconds % 60).padStart(2, '0');
+        btn.innerText = `Hủy hẹn giờ (${m}:${s})`;
+        btn.className = 'w-full py-2.5 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-white font-semibold text-[14px] transition';
         text.innerHTML = `<span class="text-red-400 font-semibold font-mono">Tự động tạm dừng sau: ${m}:${s}</span>`;
         badge.innerText = `⏰ ${m}:${s}`;
       };
@@ -2292,13 +2574,73 @@
           sleepTimerInterval = null;
           pauseActivePlayer();
           btn.innerText = 'Bắt đầu hẹn giờ';
-          btn.className = 'bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg font-medium text-[11px] shrink-0 transition';
+          btn.className = 'w-full py-2.5 rounded-xl bg-[#dc2626] hover:bg-red-700 text-white font-semibold text-[14px] transition shadow-sm';
           text.innerHTML = `<span class="text-emerald-400 font-semibold">✓ Đã hết giờ — Trình phát đã được tạm dừng!</span>`;
           badge.classList.add('hidden');
         } else {
           updateTickUI();
         }
       }, 1000);
+    }
+
+    async function refreshCacheSizeUI() {
+      const lbl = document.getElementById('cacheSizeLabel');
+      if (!lbl) return;
+      let totalBytes = 0;
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i) || '';
+          totalBytes += (k.length + (localStorage.getItem(k) || '').length) * 2;
+        }
+        apiCache.forEach((v, k) => {
+          totalBytes += (String(k).length + JSON.stringify(v).length) * 2;
+        });
+        if ('caches' in window) {
+          const names = await caches.keys();
+          for (const name of names) {
+            const c = await caches.open(name);
+            const reqs = await c.keys();
+            for (const req of reqs) {
+              const resp = await c.match(req);
+              if (resp) {
+                const clone = resp.clone();
+                const buf = await clone.arrayBuffer();
+                totalBytes += buf.byteLength;
+              }
+            }
+          }
+        } else if (navigator.storage && navigator.storage.estimate) {
+          const est = await navigator.storage.estimate();
+          if (est && est.usage) totalBytes = Math.max(totalBytes, est.usage);
+        }
+      } catch (_) {}
+
+      let formatted = '0 KB';
+      if (totalBytes >= 1024 * 1024) {
+        formatted = `${(totalBytes / (1024 * 1024)).toFixed(1)} MB`;
+      } else if (totalBytes > 0) {
+        formatted = `${Math.max(1, Math.round(totalBytes / 1024))} KB`;
+      }
+      lbl.innerText = `Bộ nhớ đệm (${formatted})`;
+    }
+
+    async function clearAppCache() {
+      const btn = document.getElementById('btnClearCache');
+      apiCache.clear();
+      try {
+        if ('caches' in window) {
+          const names = await caches.keys();
+          await Promise.all(names.map(n => caches.delete(n)));
+        }
+      } catch (_) {}
+      document.getElementById('cacheSizeLabel').innerText = 'Bộ nhớ đệm (0 KB)';
+      if (btn) {
+        btn.innerText = 'Đã xóa ✓';
+        setTimeout(() => {
+          btn.innerText = 'Xóa';
+          refreshCacheSizeUI();
+        }, 1800);
+      }
     }
 
     function setTheme(dark) {
@@ -2327,9 +2669,15 @@
 
       document.getElementById('apiKeyInput').value = userApiKey;
       document.getElementById('privacyEmbedToggle').checked = usePrivacyEmbed;
+      document.getElementById('bgPlayToggle').checked = bgPlayEnabled;
+      document.getElementById('defaultModeSelect').value = defaultOpenMode;
+      document.getElementById('autoplayNextToggle').checked = autoplayNextEnabled;
+      document.getElementById('playbackQualitySelect').value = playbackQualityPref;
+      selectSleepMinutes(selectedSleepMinutes);
       setTheme(isDarkMode);
-      setPlayerMode(playerMode);
+      setPlayerMode(defaultOpenMode);
       saveLibraryState();
+      refreshCacheSizeUI();
 
       await verifyApiKey(userApiKey);
       await loadHomeFeed(false);
