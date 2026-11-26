@@ -146,3 +146,15 @@
   1. Chuyển toàn bộ hiển thị Lock Screen & nút điều khiển phần cứng trên iOS sang `navigator.mediaSession` gốc ngay bên trong `WKWebView` (`__ytUpdateMediaSession` + `setActionHandler` kết nối ngược về `PlayerViewModel` qua `onRemoteCommand`), nhường 100% quyền `MPNowPlayingInfoCenter` cho tiến trình `WebKit.GPU` (loại bỏ hoàn toàn xung đột `MRMediaRemote` và bỏ timer polling 2 giây), đồng thời cấu hình `AVAudioSession` với `.moviePlayback` + `[.mixWithOthers]`.
   2. Tối ưu đường truyền phát video: dùng chung `PlaybackService.sharedProcessPool` + `WKWebsiteDataStore.default()`, khởi động ấm kết nối (`prewarmNetworkAndPlayerCache` với `<link rel="preconnect">` tới `youtube.com`, `googlevideo.com`, `i.ytimg.com` ngay khi mở app), gỡ bỏ đánh giá regex `WKContentRuleList` trên luồng video YouTube và giới hạn dải ABR tối ưu `hd1080` cho màn hình iPhone. Nâng phiên bản lên `2.1.3 (Build 5)`.
 - **Trạng thái:** 🟢 Fixed
+
+### [API-005] Lỗi `Network error: cancelled` lúc vừa mở app + Bổ sung Đề xuất theo thói quen xem & Lịch sử tìm kiếm kiểu YouTube (`2.1.4`)
+- **Ngày phát hiện:** 2026-11-27
+- **Mức độ:** Major
+- **Nguyên nhân:**
+  1. Modifier `.task` của SwiftUI trên `HomeView` tự động hủy task mạng đầu tiên khi `TabView` / `preferredColorScheme` mount lại lúc khởi động, ném `URLError(.cancelled)`. `YouTubeAPIService` bọc lỗi này thành `AppError.networkError("cancelled")` và `HomeViewModel` khóa cứng sang `VideoItem.mockItems` nên không tự gọi lại API nữa.
+  2. Trang chủ trước đó chỉ lấy `mostPopular` cố định thay vì cá nhân hóa theo lịch sử xem/yêu thích/tìm kiếm; trang Tìm kiếm hiển thị thanh gợi ý tĩnh (`quickSuggestionBar`) thay vì lịch sử tìm kiếm thực tế của người dùng.
+- **Cách sửa:**
+  1. Bỏ qua `CancellationError` / `URLError.cancelled` trong `YouTubeAPIService.fetchDecoded` và chuyển sang `HomeViewModel.ensureFeedLoaded` độc lập với vòng đời `.task` kèm cơ chế tự thử lại khi khởi động lạnh.
+  2. Xây dựng `HabitRecommendationBuilder` phân tích lịch sử xem (`WatchHistoryItem`), danh sách yêu thích (`FavoriteItem`) và lịch sử tìm kiếm để tự động tổng hợp luồng **"Đề xuất cho bạn"** kết hợp xu hướng mới và tự làm mới khi thói quen thay đổi.
+  3. Xóa hoàn toàn thanh tag gợi ý tĩnh trên `SearchView`, thay bằng `SearchHistoryStore` hiển thị danh sách lịch sử tìm kiếm chuẩn YouTube (icon đồng hồ, ảnh thu nhỏ kết quả đã mở, nút `↖` điền nhanh vào ô tìm kiếm, vuốt để xóa từng mục hoặc xóa tất cả). Nâng phiên bản lên `2.1.4 (Build 6)`.
+- **Trạng thái:** 🟢 Fixed

@@ -463,6 +463,10 @@ final class YouTubeAPIService: ObservableObject {
         let response: URLResponse
         do {
             (data, response) = try await URLSession.shared.data(from: url)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            throw CancellationError()
         } catch let urlError as URLError where urlError.code == .notConnectedToInternet || urlError.code == .networkConnectionLost {
             throw AppError.noInternet
         } catch {
@@ -587,5 +591,148 @@ final class YouTubeAPIService: ObservableObject {
 
     private func isCacheExpired(_ timestamp: Date) -> Bool {
         Date().timeIntervalSince(timestamp) > cacheTTL
+    }
+}
+
+// MARK: - SearchHistoryEntry & SearchHistoryStore (YouTube-style Search History)
+
+struct SearchHistoryEntry: Identifiable, Codable, Hashable {
+    var id: String { query.lowercased() }
+    let query: String
+    var thumbnailURL: String?
+    var updatedAt: Date
+}
+
+final class SearchHistoryStore: ObservableObject {
+    static let shared = SearchHistoryStore()
+
+    private let storageKey = "ytplayer_search_history_entries_v1"
+    private let maxEntries = 30
+
+    @Published private(set) var entries: [SearchHistoryEntry] = []
+
+    private init() {
+        load()
+    }
+
+    func record(query: String, thumbnailURL: String? = nil) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        var current = entries
+        let existingThumb = current.first(where: { $0.query.caseInsensitiveCompare(trimmed) == .orderedSame })?.thumbnailURL
+        current.removeAll { $0.query.caseInsensitiveCompare(trimmed) == .orderedSame }
+
+        let entry = SearchHistoryEntry(
+            query: trimmed,
+            thumbnailURL: thumbnailURL ?? existingThumb,
+            updatedAt: Date()
+        )
+        current.insert(entry, at: 0)
+        if current.count > maxEntries {
+            current = Array(current.prefix(maxEntries))
+        }
+        entries = current
+        save()
+    }
+
+    func remove(query: String) {
+        entries.removeAll { $0.query.caseInsensitiveCompare(query) == .orderedSame }
+        save()
+    }
+
+    func clearAll() {
+        entries.removeAll()
+        UserDefaults.standard.removeObject(forKey: storageKey)
+    }
+
+    private func load() {
+        guard let data = UserDefaults.standard.data(forKey: storageKey),
+              let decoded = try? JSONDecoder().decode([SearchHistoryEntry].self, from: data) else {
+            entries = []
+            return
+        }
+        entries = decoded
+    }
+
+    private func save() {
+        if let data = try? JSONEncoder().encode(entries) {
+            UserDefaults.standard.set(data, forKey: storageKey)
+        }
+    }
+}
+
+// MARK: - Viewing Habit Recommendation Query Builder
+
+enum HabitRecommendationBuilder {
+    /// Extracts up to `maxSeeds` personalized search queries from the user's watch history,
+    /// favorites, and recent searches so the Home feed adapts to real viewing habits.
+    static func buildRecommendationQueries(
+        history: [VideoItem],
+        favorites: [VideoItem],
+        recentSearches: [SearchHistoryEntry],
+        maxSeeds: Int = 2
+    ) -> [String] {
+        var channelWeights: [String: Double] = [:]
+        var orderedChannels: [String] = []
+
+        func registerChannel(_ rawName: String, weight: Double) {
+            let cleaned = cleanChannelSeed(rawName)
+            guard !cleaned.isEmpty, cleaned.lowercased() != "youtube direct link" else { return }
+            let key = cleaned.lowercased()
+            if channelWeights[key] == nil {
+                orderedChannels.append(cleaned)
+            }
+            channelWeights[key, default: 0] += weight
+        }
+
+        // Recent watch history carries strong recency + frequency weight
+        for (idx, item) in history.prefix(15).enumerated() {
+            let recencyBoost = max(1.0, 3.0 - Double(idx) * 0.25)
+            registerChannel(item.channelName, weight: recencyBoost)
+        }
+
+        // Favorites carry strong affinity weight
+        for item in favorites.prefix(10) {
+            registerChannel(item.channelName, weight: 2.5)
+        }
+
+        let rankedChannels = orderedChannels.sorted {
+            (channelWeights[$0.lowercased()] ?? 0) > (channelWeights[$1.lowercased()] ?? 0)
+        }
+
+        var seeds: [String] = []
+        if let mostRecentSearch = recentSearches.first?.query,
+           YouTubeFormatters.extractVideoID(from: mostRecentSearch) == nil {
+            seeds.append(mostRecentSearch)
+        }
+
+        for ch in rankedChannels {
+            if !seeds.contains(where: { $0.caseInsensitiveCompare(ch) == .orderedSame }) {
+                seeds.append(ch)
+            }
+            if seeds.count >= maxSeeds { break }
+        }
+
+        if seeds.count < maxSeeds {
+            for search in recentSearches.dropFirst() {
+                if YouTubeFormatters.extractVideoID(from: search.query) == nil,
+                   !seeds.contains(where: { $0.caseInsensitiveCompare(search.query) == .orderedSame }) {
+                    seeds.append(search.query)
+                }
+                if seeds.count >= maxSeeds { break }
+            }
+        }
+
+        return Array(seeds.prefix(maxSeeds))
+    }
+
+    static func cleanChannelSeed(_ name: String) -> String {
+        var result = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let suffixes = [" Official", " OFFICIAL", " VEVO", " Vevo", " Channel"]
+        for suffix in suffixes where result.count > suffix.count + 2 && result.hasSuffix(suffix) {
+            result = String(result.dropLast(suffix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return result
     }
 }

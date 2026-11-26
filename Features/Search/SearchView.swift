@@ -3,6 +3,7 @@ import SwiftUI
 struct SearchView: View {
     @StateObject private var vm: SearchViewModel
     @EnvironmentObject var router: AppRouter
+    @State private var showClearHistoryConfirm = false
 
     init(initialQuery: String = "") {
         _vm = StateObject(wrappedValue: SearchViewModel(initialQuery: initialQuery))
@@ -10,34 +11,55 @@ struct SearchView: View {
 
     var body: some View {
         navigationContainer {
-            VStack(spacing: 0) {
-                quickSuggestionBar
-
-                Group {
-                    switch vm.state {
-                    case .idle:
-                        idleView
-                    case .loading:
-                        loadingView
-                    case .loaded:
-                        resultsView(videos: vm.results)
-                    case .empty:
-                        emptyView
-                    case .error(let message):
-                        errorView(message: message)
-                    }
+            Group {
+                switch vm.state {
+                case .idle:
+                    searchHistoryView
+                case .loading:
+                    loadingView
+                case .loaded:
+                    resultsView(videos: vm.results)
+                case .empty:
+                    emptyView
+                case .error(let message):
+                    errorView(message: message)
                 }
             }
             .navigationTitle("Tìm kiếm")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
-            .searchable(text: $vm.query, prompt: "Tìm kiếm video hoặc dán link YouTube...")
+            .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    if vm.state == .idle && !vm.searchHistory.isEmpty {
+                        Button("Xóa lịch sử") {
+                            showClearHistoryConfirm = true
+                        }
+                        .font(.ytCaption)
+                        .foregroundColor(.ytRed)
+                    }
+                }
+            }
+            .searchable(text: $vm.query, prompt: "Tìm kiếm trên YouTube hoặc dán link...")
             .onSubmit(of: .search) {
                 vm.searchImmediate()
             }
-            .onChange(of: vm.query) { _ in
-                vm.search()
+            .onChange(of: vm.query) { newValue in
+                if newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    vm.clear()
+                } else {
+                    vm.search()
+                }
+            }
+            .confirmationDialog(
+                "Xóa toàn bộ lịch sử tìm kiếm?",
+                isPresented: $showClearHistoryConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Xóa tất cả", role: .destructive) {
+                    vm.clearSearchHistory()
+                }
+                Button("Hủy", role: .cancel) {}
             }
         }
     }
@@ -55,45 +77,81 @@ struct SearchView: View {
         #endif
     }
 
-    // MARK: - Subviews
+    // MARK: - YouTube-Style Search History View
 
-    private var quickSuggestionBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Spacing.sm) {
-                ForEach(vm.quickSuggestions, id: \.self) { tag in
-                    Button {
-                        vm.selectSuggestion(tag)
-                    } label: {
-                        Text(tag)
-                            .font(.ytCaption)
-                            .foregroundColor(vm.query == tag ? .white : .ytPrimaryText)
-                            .padding(.horizontal, Spacing.md)
-                            .padding(.vertical, 6)
-                            .background(vm.query == tag ? Color.ytRed : Color.ytSurface)
-                            .cornerRadius(16)
-                    }
-                    .buttonStyle(.plain)
+    private var searchHistoryView: some View {
+        Group {
+            if vm.searchHistory.isEmpty {
+                VStack(spacing: Spacing.lg) {
+                    Spacer()
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 48, weight: .light))
+                        .foregroundColor(.ytSecondaryText)
+                    Text("Lịch sử tìm kiếm của bạn sẽ hiển thị tại đây")
+                        .font(.ytSubheadline)
+                        .foregroundColor(.ytSecondaryText)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, Spacing.xl)
+                    Spacer()
                 }
+            } else {
+                List {
+                    ForEach(vm.searchHistory) { entry in
+                        HStack(spacing: Spacing.md) {
+                            Button {
+                                vm.selectHistoryEntry(entry)
+                            } label: {
+                                HStack(spacing: Spacing.md) {
+                                    Image(systemName: "clock.arrow.circlepath")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.ytSecondaryText)
+                                        .frame(width: 24)
+
+                                    Text(entry.query)
+                                        .font(.ytBody)
+                                        .foregroundColor(.ytPrimaryText)
+                                        .lineLimit(1)
+
+                                    Spacer(minLength: 4)
+
+                                    if let thumb = entry.thumbnailURL, !thumb.isEmpty {
+                                        AsyncImageView(urlString: thumb)
+                                            .frame(width: 52, height: 30)
+                                            .cornerRadius(4)
+                                            .clipped()
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+
+                            // YouTube-style diagonal arrow to copy term into search box for editing
+                            Button {
+                                vm.fillQueryFromHistory(entry)
+                            } label: {
+                                Image(systemName: "arrow.up.left")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(.ytSecondaryText)
+                                    .frame(width: 32, height: 32)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .listRowInsets(EdgeInsets(top: 6, leading: Spacing.md, bottom: 6, trailing: Spacing.sm))
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                vm.deleteHistoryEntry(entry)
+                            } label: {
+                                Label("Xóa", systemImage: "trash")
+                            }
+                        }
+                    }
+                }
+                .listStyle(.plain)
             }
-            .padding(.horizontal, Spacing.md)
-            .padding(.vertical, Spacing.sm)
         }
     }
 
-    private var idleView: some View {
-        VStack(spacing: Spacing.lg) {
-            Spacer()
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 56, weight: .light))
-                .foregroundColor(.ytSecondaryText)
-            Text("Tìm kiếm video, kênh hoặc dán link YouTube")
-                .font(.ytHeadline)
-                .foregroundColor(.ytSecondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Spacing.xl)
-            Spacer()
-        }
-    }
+    // MARK: - Search Results & States
 
     private var loadingView: some View {
         VStack {
@@ -123,6 +181,7 @@ struct SearchView: View {
 
             ForEach(videos) { video in
                 Button {
+                    vm.recordOpenedResult(video)
                     router.presentPlayer(video: video, queue: videos)
                 } label: {
                     SearchResultRow(video: video)

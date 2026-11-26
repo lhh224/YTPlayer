@@ -156,6 +156,22 @@ struct DemoTestSuite {
         assertTest(YouTubeFormatters.extractVideoID(from: "https://www.youtube.com/watch?v=Llw9Q6akRo4") == "Llw9Q6akRo4", "Tách Video ID từ link youtube.com/watch")
         assertTest(YouTubeFormatters.extractVideoID(from: "https://youtu.be/dQw4w9WgXcQ") == "dQw4w9WgXcQ", "Tách Video ID từ link rút gọn youtu.be")
 
+        let searchStore = SearchHistoryStore.shared
+        searchStore.clearAll()
+        searchStore.record(query: "Quốc Thiên", thumbnailURL: "https://i.ytimg.com/vi/abc/hqdefault.jpg")
+        searchStore.record(query: "Lofi chill")
+        searchStore.record(query: "quốc thiên") // trùng không phân biệt hoa thường -> đẩy lên đầu và giữ thumbnail
+        assertTest(searchStore.entries.count == 2 && searchStore.entries.first?.query == "quốc thiên" && searchStore.entries.first?.thumbnailURL != nil, "SearchHistoryStore lưu, khử trùng lặp và giữ thumbnail giống YouTube")
+
+        let habitSeeds = HabitRecommendationBuilder.buildRecommendationQueries(
+            history: [mocks[5], mocks[6]],
+            favorites: [mocks[0]],
+            recentSearches: searchStore.entries,
+            maxSeeds: 2
+        )
+        assertTest(habitSeeds.count == 2 && habitSeeds.first == "quốc thiên", "HabitRecommendationBuilder trích xuất từ khóa đề xuất theo thói quen xem & tìm kiếm")
+        searchStore.clearAll()
+
         let duration = String(format: "%.3f", CFAbsoluteTimeGetCurrent() - startTime)
         print("\n======================================================================")
         print("📊 TỔNG KẾT BÀI KIỂM THỬ:")

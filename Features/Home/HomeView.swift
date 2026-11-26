@@ -3,6 +3,14 @@ import SwiftUI
 struct HomeView: View {
     @StateObject private var vm = HomeViewModel()
     @EnvironmentObject var router: AppRouter
+    @EnvironmentObject var libraryRepo: LibraryRepository
+
+    private var sectionHeaderTitle: String {
+        if vm.isUsingFallbackData {
+            return "Danh mục nổi bật (Demo)"
+        }
+        return vm.isPersonalizedFeed ? "Đề xuất cho bạn" : "Thịnh hành tại Việt Nam"
+    }
 
     var body: some View {
         navigationContainer {
@@ -17,10 +25,25 @@ struct HomeView: View {
                             }
 
                             SectionHeaderView(
-                                title: vm.isUsingFallbackData ? "Danh mục nổi bật (Demo)" : "Thịnh hành tại Việt Nam",
+                                title: sectionHeaderTitle,
                                 actionTitle: "Làm mới",
-                                action: { vm.refresh() }
+                                action: { vm.refresh(repo: libraryRepo) }
                             )
+
+                            if vm.isPersonalizedFeed && !vm.recommendationSummary.isEmpty && !vm.isUsingFallbackData {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "sparkles")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.ytRed)
+                                    Text("Dựa trên thói quen xem: \(vm.recommendationSummary)")
+                                        .font(.ytCaption)
+                                        .foregroundColor(.ytSecondaryText)
+                                        .lineLimit(1)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, Spacing.lg)
+                                .padding(.bottom, Spacing.sm)
+                            }
 
                             ForEach(vm.videos) { video in
                                 Button {
@@ -36,7 +59,7 @@ struct HomeView: View {
                         }
                     }
                     .refreshable {
-                        await vm.loadTrending(forceRefresh: true)
+                        await vm.loadTrending(repo: libraryRepo, forceRefresh: true)
                     }
                 }
             }
@@ -52,9 +75,15 @@ struct HomeView: View {
                 }
             }
         }
-        .task {
-            if vm.videos.isEmpty {
-                await vm.loadTrending()
+        .onAppear {
+            vm.ensureFeedLoaded(repo: libraryRepo)
+        }
+        .onReceive(libraryRepo.objectWillChange) { _ in
+            // Refresh Home recommendations in background after user watches/favorites new videos
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                if router.selectedTab == 0 {
+                    vm.ensureFeedLoaded(repo: libraryRepo)
+                }
             }
         }
     }
@@ -100,5 +129,6 @@ struct HomeView_Previews: PreviewProvider {
     static var previews: some View {
         HomeView()
             .environmentObject(AppRouter())
+            .environmentObject(LibraryRepository(context: CoreDataStack.shared.context))
     }
 }

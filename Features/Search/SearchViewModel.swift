@@ -24,21 +24,43 @@ final class SearchViewModel: ObservableObject {
     @Published var isLoadingMore: Bool = false
     @Published var apiWarningMessage: String?
     @Published var isShowingFallback: Bool = false
-
-    let quickSuggestions = ["Sơn Tùng M-TP", "Đen Vâu", "Lofi Girl", "Ed Sheeran", "Rick Astley", "Despacito"]
+    @Published var searchHistory: [SearchHistoryEntry] = []
 
     private let apiService: YouTubeAPIService
+    private let historyStore: SearchHistoryStore
     private var searchTask: Task<Void, Never>?
+    private var cancellables: Set<AnyCancellable> = []
 
-    init(initialQuery: String = "", apiService: YouTubeAPIService = .shared) {
+    init(
+        initialQuery: String = "",
+        apiService: YouTubeAPIService = .shared,
+        historyStore: SearchHistoryStore = .shared
+    ) {
         self.apiService = apiService
+        self.historyStore = historyStore
+        self.searchHistory = historyStore.entries
         self.query = initialQuery
+
+        historyStore.$entries
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] updated in
+                self?.searchHistory = updated
+            }
+            .store(in: &cancellables)
+
         if !initialQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             searchImmediate()
         }
     }
 
-    /// Triggers a debounced search (400 ms). Cancels any in-flight search task first.
+    /// Filtered search history matching current text when idle or typing, just like YouTube.
+    var matchingHistoryEntries: [SearchHistoryEntry] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return searchHistory }
+        return searchHistory.filter { $0.query.localizedCaseInsensitiveContains(trimmed) }
+    }
+
+    /// Triggers a debounced search (450 ms). Cancels any in-flight search task first.
     func search() {
         searchTask?.cancel()
 
@@ -50,16 +72,17 @@ final class SearchViewModel: ObservableObject {
 
         searchTask = Task {
             do {
-                try await Task.sleep(nanoseconds: 400_000_000)
+                try await Task.sleep(nanoseconds: 450_000_000)
             } catch {
                 return
             }
             guard !Task.isCancelled else { return }
-            await performSearch(query: currentQuery, pageToken: nil, append: false)
+            await performSearch(query: currentQuery, pageToken: nil, append: false, saveToHistory: false)
         }
     }
 
-    /// Runs search immediately (e.g. when tapping Search button or quick tag).
+    /// Runs search immediately (e.g. pressing Search on keyboard or tapping a history item)
+    /// and saves the query into persistent YouTube-style search history.
     func searchImmediate() {
         searchTask?.cancel()
         let currentQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -67,14 +90,37 @@ final class SearchViewModel: ObservableObject {
             clear()
             return
         }
+        historyStore.record(query: currentQuery)
         searchTask = Task {
-            await performSearch(query: currentQuery, pageToken: nil, append: false)
+            await performSearch(query: currentQuery, pageToken: nil, append: false, saveToHistory: true)
         }
     }
 
-    func selectSuggestion(_ tag: String) {
-        query = tag
+    /// Selects a past query from search history and executes search immediately.
+    func selectHistoryEntry(_ entry: SearchHistoryEntry) {
+        query = entry.query
         searchImmediate()
+    }
+
+    /// Fills query box with a history term without submitting (YouTube `↖` button behavior).
+    func fillQueryFromHistory(_ entry: SearchHistoryEntry) {
+        searchTask?.cancel()
+        query = entry.query + " "
+    }
+
+    /// Records the search query + clicked video thumbnail when user opens a search result.
+    func recordOpenedResult(_ video: VideoItem) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let effectiveQuery = trimmed.isEmpty ? video.title : trimmed
+        historyStore.record(query: effectiveQuery, thumbnailURL: video.thumbnailURL)
+    }
+
+    func deleteHistoryEntry(_ entry: SearchHistoryEntry) {
+        historyStore.remove(query: entry.query)
+    }
+
+    func clearSearchHistory() {
+        historyStore.clearAll()
     }
 
     /// Loads the next page of results if a page token is available.
@@ -85,12 +131,12 @@ final class SearchViewModel: ObservableObject {
 
         isLoadingMore = true
         Task {
-            await performSearch(query: currentQuery, pageToken: token, append: true)
+            await performSearch(query: currentQuery, pageToken: token, append: true, saveToHistory: false)
             isLoadingMore = false
         }
     }
 
-    /// Resets the search state.
+    /// Resets the active search results back to the Search History view.
     func clear() {
         searchTask?.cancel()
         searchTask = nil
@@ -104,7 +150,7 @@ final class SearchViewModel: ObservableObject {
     // MARK: - Private Methods
 
     @MainActor
-    private func performSearch(query: String, pageToken: String?, append: Bool) async {
+    private func performSearch(query: String, pageToken: String?, append: Bool, saveToHistory: Bool) async {
         if !append {
             state = .loading
             apiWarningMessage = nil
@@ -121,9 +167,14 @@ final class SearchViewModel: ObservableObject {
                 results.append(contentsOf: uniqueNew)
             } else {
                 results = searchResult.items
+                if saveToHistory, let firstThumb = searchResult.items.first?.thumbnailURL {
+                    historyStore.record(query: query, thumbnailURL: firstThumb)
+                }
             }
             nextPageToken = searchResult.nextPageToken
             state = results.isEmpty ? .empty : .loaded
+        } catch is CancellationError {
+            return
         } catch {
             guard !Task.isCancelled else { return }
             let errText = error.localizedDescription
