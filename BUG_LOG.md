@@ -124,3 +124,14 @@
   1. Đánh dấu `@MainActor` cho toàn bộ lớp `ContentFilterService` để đảm bảo mọi truy cập `WKContentRuleListStore` luôn chạy 100% trên Main Thread, bổ sung cờ chống gọi trùng `isCompiling`.
   2. Chuyển việc kích hoạt `AVAudioSession`, `NowPlayingService`, `PlaybackService` và `ContentFilterService.preloadIfNeeded()` sang `.onAppear` của `WindowGroup` sau khi `UIWindowScene` đã sẵn sàng; đồng thời tăng `MARKETING_VERSION = 2.1.1` (`Build 3`) để iOS / ESign làm mới hoàn toàn cache chữ ký.
 - **Trạng thái:** 🟢 Fixed
+
+### [PLAY-003] Video tự pause liên tục hoặc xoay vòng tròn (buffering loop) khi phát trên bản 2.1.1
+- **Ngày phát hiện:** 2026-11-26
+- **Mức độ:** Critical
+- **Nguyên nhân:**
+  1. **Tranh chấp Audio Session giữa `AVAudioPlayer` (UIProcess) và `WKWebView` (`WebKit.GPU`):** Mỗi khi YouTube IFrame chuyển sang `PLAYING (1)`, `PlaybackService.play(video:)` gọi `keepAliveAudioPlayer.play()` với `AVAudioSession(.playback, options: [])` (độc quyền). Do bộ giải mã video của `WKWebView` chạy ở tiến trình hệ thống riêng (`com.apple.WebKit.GPU`), việc `AVAudioPlayer` phát âm thanh từ UIProcess lập tức chiếm quyền âm thanh của `WebKit.GPU` khiến `<video>` của YouTube bị ép `PAUSED (2)` ngay lập tức lặp đi lặp lại.
+  2. **Vòng lặp reset tải luồng trong `__ytTriggerAutoplay`:** Timer `320ms` và `900ms` gọi lại `mute()` / `playVideo()` ngay cả khi YouTube đang nạp luồng (`UNSTARTED = -1`), cộng thêm lệnh gọi `ContentFilterService.apply` sau khi `WKWebView` đã bắt đầu `loadHTMLString`, làm ngắt quãng quá trình nạp manifest gây xoay vòng tròn.
+- **Cách sửa:**
+  1. Gỡ bỏ hoàn toàn `keepAliveAudioPlayer` (`AVAudioPlayer`), chỉ khởi tạo `AVAudioSession(.playback)` đúng 1 lần duy nhất (`ensureAudioSessionConfiguredOnce()`) để tiến trình `WebKit.GPU` giữ trọn vẹn phiên phát âm thanh.
+  2. Đơn giản hóa `__ytTriggerAutoplay()` chỉ gọi `player.playVideo()` đúng 1 lần khi `onPlayerReady` (không bao giờ can thiệp khi `state === 1` hoặc `state === 3` đang buffering), và gắn `ContentFilterService` đồng bộ trước khi khởi tạo `WKWebView`. Nâng phiên bản lên `2.1.2 (Build 4)`.
+- **Trạng thái:** 🟢 Fixed

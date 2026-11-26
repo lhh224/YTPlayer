@@ -34,14 +34,6 @@ struct YTPlayerApp: App {
     /// Configures `AVAudioSession` for continuous background audio playback (`.playback`)
     /// and activates it once the main UI scene has appeared.
     static func configureAudioSession() {
-        #if os(iOS)
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [])
-            try session.setActive(true)
-        } catch {
-            print("[YTPlayerApp] Failed to configure AVAudioSession: \(error.localizedDescription)")
-        }
-        #endif
+        PlaybackService.shared.ensureAudioSessionConfiguredOnce()
     }
 }

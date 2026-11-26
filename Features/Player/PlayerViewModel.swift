@@ -246,7 +246,7 @@ final class PlayerViewModel: ObservableObject {
         playerState = .loading
         addToHistory()
         PlaybackService.shared.play(video: nextVideo)
-        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(false); if (window.player && typeof player.loadVideoById === 'function') { player.loadVideoById('\(nextVideo.id)'); if (window.__ytTriggerAutoplay) { window.__ytTriggerAutoplay(); } }")
+        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(false); if (window.player && typeof player.loadVideoById === 'function') { player.loadVideoById('\(nextVideo.id)'); }")
         Task {
             await loadFullDetailsIfNeeded()
         }

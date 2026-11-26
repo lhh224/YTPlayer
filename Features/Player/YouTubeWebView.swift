@@ -34,6 +34,9 @@ struct YouTubeWebView: UIViewRepresentable {
         userContentController.add(context.coordinator, name: "ytPlayer")
         configuration.userContentController = userContentController
 
+        // Attach pre-compiled content rules BEFORE initializing WKWebView so loads are never interrupted
+        _ = ContentFilterService.shared.applySynchronouslyIfReady(to: configuration)
+
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.scrollView.isScrollEnabled = false
         webView.isOpaque = false
@@ -52,12 +55,6 @@ struct YouTubeWebView: UIViewRepresentable {
                 DispatchQueue.main.async {
                     webView?.evaluateJavaScript(js, completionHandler: nil)
                 }
-            }
-        }
-
-        if !ContentFilterService.shared.applySynchronouslyIfReady(to: configuration) {
-            Task { @MainActor in
-                await ContentFilterService.shared.apply(to: webView.configuration)
             }
         }
 
@@ -119,6 +116,8 @@ struct YouTubeWebView: NSViewRepresentable {
         userContentController.add(context.coordinator, name: "ytPlayer")
         configuration.userContentController = userContentController
 
+        _ = ContentFilterService.shared.applySynchronouslyIfReady(to: configuration)
+
         let webView = WKWebView(frame: .zero, configuration: configuration)
         context.coordinator.webView = webView
         context.coordinator.loadedHTML = html
@@ -130,12 +129,6 @@ struct YouTubeWebView: NSViewRepresentable {
                 DispatchQueue.main.async {
                     webView?.evaluateJavaScript(js, completionHandler: nil)
                 }
-            }
-        }
-
-        if !ContentFilterService.shared.applySynchronouslyIfReady(to: configuration) {
-            Task { @MainActor in
-                await ContentFilterService.shared.apply(to: webView.configuration)
             }
         }
 
