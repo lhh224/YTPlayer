@@ -112,3 +112,15 @@
   2. Chuyển trình phát sang Persistent Player + **Mini Player** trong `ContentView` / `AppRouter` (bấm `∨` thu nhỏ xuống thanh Mini Player, giữ nguyên `WKWebView` kích thước tối thiểu `160x90`), kết hợp bộ giữ phiên `AVAudioPlayer` PCM siêu êm (`volume = 0.01`) trong `PlaybackService` và listener `pause` trực tiếp trên thẻ `<video>` bên trong iframe con (`__ytSyncGuard`).
   3. Biên dịch trước (`preload`) và gắn đồng bộ `WKContentRuleList` trong `ContentFilterService` cho các domain theo dõi web bên thứ ba mà không chạm tới hạ tầng luồng phát YouTube.
 - **Trạng thái:** 🟢 Fixed
+
+
+### [CRASH-001] Ứng dụng bị văng ngay khi mở (Launch Crash) trên bản build 22:45
+- **Ngày phát hiện:** 2026-11-26
+- **Mức độ:** Critical (Blocker)
+- **Nguyên nhân:**
+  1. `ContentFilterService` không được đánh dấu `@MainActor`, nên theo quy tắc Swift Concurrency (SE-0338), hàm `private func compileRuleList() async throws` tự động chuyển sang background thread pool và gọi `WKContentRuleListStore.default()` ngoài Main Thread ngay trong `YTPlayerApp.init()`.
+  2. Trong WebKit (`WKContentRuleListStore.mm`), `+[WKContentRuleListStore defaultStore]` kiểm tra `RELEASE_ASSERT(RunLoop::isMain())`, dẫn đến crash `EXC_BREAKPOINT` tức thì ngay khi chạm vào icon ứng dụng (thậm chí `preload()` còn bị gọi trùng từ cả `ContentFilterService.init()` và `YTPlayerApp.init()` trước khi `UIApplication` khởi tạo xong scene).
+- **Cách sửa:**
+  1. Đánh dấu `@MainActor` cho toàn bộ lớp `ContentFilterService` để đảm bảo mọi truy cập `WKContentRuleListStore` luôn chạy 100% trên Main Thread, bổ sung cờ chống gọi trùng `isCompiling`.
+  2. Chuyển việc kích hoạt `AVAudioSession`, `NowPlayingService`, `PlaybackService` và `ContentFilterService.preloadIfNeeded()` sang `.onAppear` của `WindowGroup` sau khi `UIWindowScene` đã sẵn sàng; đồng thời tăng `MARKETING_VERSION = 2.1.1` (`Build 3`) để iOS / ESign làm mới hoàn toàn cache chữ ký.
+- **Trạng thái:** 🟢 Fixed

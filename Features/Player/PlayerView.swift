@@ -567,15 +567,22 @@ private final class StyledMPVolumeView: MPVolumeView {
     }
 
     func applyTrackStyling() {
+        guard bounds.width > 0, bounds.height > 0 else { return }
         for subview in subviews {
             if let slider = subview as? UISlider {
                 slider.minimumTrackTintColor = UIColor(Color.ytRed)
                 slider.maximumTrackTintColor = UIColor.white.withAlphaComponent(0.22)
-                var sliderFrame = slider.frame
-                sliderFrame.origin.x = 0
-                sliderFrame.size.width = bounds.width
-                sliderFrame.origin.y = (bounds.height - sliderFrame.height) / 2.0
-                slider.frame = sliderFrame
+                let targetY = ((bounds.height - slider.frame.height) / 2.0).rounded()
+                if abs(slider.frame.origin.x) > 0.5 ||
+                    abs(slider.frame.size.width - bounds.width) > 0.5 ||
+                    abs(slider.frame.origin.y - targetY) > 0.5 {
+                    slider.frame = CGRect(
+                        x: 0,
+                        y: targetY,
+                        width: bounds.width,
+                        height: slider.frame.height
+                    )
+                }
             } else {
                 subview.isHidden = true
             }

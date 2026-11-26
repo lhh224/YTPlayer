@@ -5,26 +5,22 @@
 import Foundation
 import WebKit
 
+@MainActor
 final class ContentFilterService: ObservableObject {
     static let shared = ContentFilterService()
 
     private let ruleListIdentifier = "YTPlayerWebTrackingProtectionListV2"
     private var cachedRuleList: WKContentRuleList?
+    private var isCompiling: Bool = false
 
     @Published var isEnabled: Bool {
         didSet {
             UserDefaults.standard.set(isEnabled, forKey: "contentFilterEnabled")
-            if isEnabled && cachedRuleList == nil {
-                preload()
-            }
         }
     }
 
     init() {
         self.isEnabled = UserDefaults.standard.object(forKey: "contentFilterEnabled") as? Bool ?? true
-        if self.isEnabled {
-            preload()
-        }
     }
 
     // JSON content blocking rules (WKContentRuleList format)
@@ -55,26 +51,32 @@ final class ContentFilterService: ObservableObject {
         """
     }
 
-    /// Biên dịch sẵn rule list vào bộ nhớ đệm ngay khi khởi động app để gắn đồng bộ vào WKWebView.
-    func preload() {
-        guard isEnabled else { return }
-        Task { @MainActor in
-            if let list = try? await compileRuleList() {
-                self.cachedRuleList = list
+    /// Biên dịch sẵn rule list trên MainActor sau khi giao diện chính đã khởi chạy.
+    func preloadIfNeeded() {
+        guard isEnabled, cachedRuleList == nil, !isCompiling else { return }
+        isCompiling = true
+        WKContentRuleListStore.default().compileContentRuleList(
+            forIdentifier: ruleListIdentifier,
+            encodedContentRuleList: rulesJSON
+        ) { [weak self] ruleList, _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                self.isCompiling = false
+                if let ruleList = ruleList {
+                    self.cachedRuleList = ruleList
+                }
             }
         }
     }
 
     /// Gắn ngay lập tức rule list đã biên dịch sẵn trước khi `WKWebView` bắt đầu tải trang.
-    @MainActor
     func applySynchronouslyIfReady(to configuration: WKWebViewConfiguration) -> Bool {
         guard isEnabled, let cachedRuleList = cachedRuleList else { return false }
         configuration.userContentController.add(cachedRuleList)
         return true
     }
 
-    /// Biên dịch và áp dụng WKContentRuleList vào configuration của WKWebView.
-    @MainActor
+    /// Biên dịch và áp dụng WKContentRuleList vào configuration của WKWebView (luôn trên MainActor).
     func apply(to configuration: WKWebViewConfiguration) async {
         guard isEnabled else { return }
         if let cachedRuleList = cachedRuleList {
@@ -82,7 +84,7 @@ final class ContentFilterService: ObservableObject {
             return
         }
         do {
-            if let ruleList = try await compileRuleList() {
+            if let ruleList = try await compileRuleListOnMain() {
                 self.cachedRuleList = ruleList
                 configuration.userContentController.add(ruleList)
             }
@@ -96,7 +98,7 @@ final class ContentFilterService: ObservableObject {
         configuration.userContentController.removeAllContentRuleLists()
     }
 
-    private func compileRuleList() async throws -> WKContentRuleList? {
+    private func compileRuleListOnMain() async throws -> WKContentRuleList? {
         return try await withCheckedThrowingContinuation { continuation in
             WKContentRuleListStore.default().compileContentRuleList(
                 forIdentifier: ruleListIdentifier,

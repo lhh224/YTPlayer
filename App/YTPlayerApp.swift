@@ -14,26 +14,25 @@ struct YTPlayerApp: App {
     @StateObject private var libraryRepo = LibraryRepository(context: CoreDataStack.shared.context)
     @StateObject private var settingsVM = SettingsViewModel()
 
-    init() {
-        Self.configureAudioSession()
-        ContentFilterService.shared.preload()
-        NowPlayingService.shared.configureRemoteCommands()
-        PlaybackService.shared.registerSystemObserversIfNeeded()
-    }
-
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(router)
                 .environmentObject(libraryRepo)
                 .environmentObject(settingsVM)
+                .onAppear {
+                    Self.configureAudioSession()
+                    NowPlayingService.shared.configureRemoteCommands()
+                    PlaybackService.shared.registerSystemObserversIfNeeded()
+                    ContentFilterService.shared.preloadIfNeeded()
+                }
         }
     }
 
     // MARK: - Audio Session Setup & Recovery
 
     /// Configures `AVAudioSession` for continuous background audio playback (`.playback`)
-    /// and activates it immediately on app launch.
+    /// and activates it once the main UI scene has appeared.
     static func configureAudioSession() {
         #if os(iOS)
         do {

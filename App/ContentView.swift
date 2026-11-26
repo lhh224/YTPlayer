@@ -3,7 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var router: AppRouter
     @EnvironmentObject var settingsVM: SettingsViewModel
-    @State private var needsOneTimeAPISetup: Bool = !YouTubeAPIService.shared.hasConfiguredAPIKey
+    @State private var needsOneTimeAPISetup: Bool = false
     @State private var oneTimeAPIKeyInput: String = ""
 
     var body: some View {
@@ -43,6 +43,11 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(settingsVM.isDarkMode ? .dark : .light)
+        .onAppear {
+            if !YouTubeAPIService.shared.hasConfiguredAPIKey {
+                needsOneTimeAPISetup = true
+            }
+        }
         .sheet(isPresented: $needsOneTimeAPISetup) {
             VStack(spacing: Spacing.lg) {
                 Text("Thiết lập lần đầu")
