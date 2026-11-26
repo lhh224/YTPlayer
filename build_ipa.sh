@@ -232,9 +232,11 @@ build_cloud_github_actions() {
   fi
 
   # Commit & đẩy toàn bộ mã nguồn mới nhất lên nhánh main
+  local pushed_new_commit=false
   git add -A
   if ! git diff --cached --quiet; then
-    git commit -m "Build YTPlayer.ipa: background audio + ESign playback fix"
+    git commit -m "Build YTPlayer.ipa: smooth streaming + MediaSession sync"
+    pushed_new_commit=true
   fi
 
   local head_sha
@@ -242,8 +244,8 @@ build_cloud_github_actions() {
   echo "  ☁️  Đang đẩy commit ${head_sha:0:7} lên GitHub ($repo_slug)..."
   git push origin HEAD:main
 
-  # Nếu chưa có commit mới (working tree sạch từ trước), kích hoạt workflow_dispatch
-  if [ -n "$gh_bin" ]; then
+  # Chỉ kích hoạt workflow_dispatch nếu không có commit mới (tránh chạy trùng 2 bản build cùng lúc)
+  if [ "$pushed_new_commit" = false ] && [ -n "$gh_bin" ]; then
     "$gh_bin" workflow run build-ipa.yml -R "$repo_slug" >/dev/null 2>&1 || true
   fi
 

@@ -2,8 +2,15 @@
 // YTPlayer — Services/NowPlayingService.swift
 // Swift 5.7, iOS 16.0
 //
-// Integrates MPNowPlayingInfoCenter & MPRemoteCommandCenter so Lock Screen,
-// Control Center, AirPods, and CarPlay display track metadata and control playback.
+// Coordinates Lock Screen & Control Center metadata.
+// IMPORTANT: On iOS, `WKWebView` runs its HTML5 `<video>` decoder inside a separate
+// `WebKit.GPU` XPC process which automatically owns `MPNowPlayingInfoCenter` and
+// `MPRemoteCommandCenter` via WebKit's native `navigator.mediaSession`. Writing to
+// `MPNowPlayingInfoCenter` or `MPRemoteCommandCenter` simultaneously from UIProcess on iOS
+// causes `MRMediaRemote` double-ownership conflicts that force-pause `<video>`!
+// Therefore, on iOS we delegate Lock Screen display & remote commands to WebKit's native
+// `navigator.mediaSession` bridge, while keeping direct `MPNowPlayingInfoCenter` updates
+// active on macOS / standalone unit-test environments where `WKWebView` is not mounted.
 
 import Foundation
 import MediaPlayer
@@ -33,8 +40,12 @@ final class NowPlayingService {
 
     // MARK: - Remote Command Center Setup
 
-    /// Registers Lock Screen, Control Center, and headphone hardware transport controls.
     func configureRemoteCommands() {
+        #if os(iOS)
+        // Handled directly inside WKWebView's `navigator.mediaSession.setActionHandler`
+        // (`WebKit.GPU`) and forwarded via `ytPlayer` JS bridge to avoid double-ownership pauses.
+        return
+        #else
         guard !isRemoteCommandsConfigured else { return }
         isRemoteCommandsConfigured = true
 
@@ -42,45 +53,35 @@ final class NowPlayingService {
 
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { _ in
-            guard PlaybackService.shared.currentVideo != nil else {
-                return .noActionableNowPlayingItem
-            }
+            guard PlaybackService.shared.currentVideo != nil else { return .noActionableNowPlayingItem }
             PlaybackService.shared.remotePlay()
             return .success
         }
 
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { _ in
-            guard PlaybackService.shared.currentVideo != nil else {
-                return .noActionableNowPlayingItem
-            }
+            guard PlaybackService.shared.currentVideo != nil else { return .noActionableNowPlayingItem }
             PlaybackService.shared.remotePause()
             return .success
         }
 
         commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.togglePlayPauseCommand.addTarget { _ in
-            guard PlaybackService.shared.currentVideo != nil else {
-                return .noActionableNowPlayingItem
-            }
+            guard PlaybackService.shared.currentVideo != nil else { return .noActionableNowPlayingItem }
             PlaybackService.shared.remoteTogglePlayPause()
             return .success
         }
 
         commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.addTarget { _ in
-            guard PlaybackService.shared.currentVideo != nil else {
-                return .noActionableNowPlayingItem
-            }
+            guard PlaybackService.shared.currentVideo != nil else { return .noActionableNowPlayingItem }
             PlaybackService.shared.remoteNextTrack()
             return .success
         }
 
         commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.previousTrackCommand.addTarget { _ in
-            guard PlaybackService.shared.currentVideo != nil else {
-                return .noActionableNowPlayingItem
-            }
+            guard PlaybackService.shared.currentVideo != nil else { return .noActionableNowPlayingItem }
             PlaybackService.shared.remotePreviousTrack()
             return .success
         }
@@ -94,17 +95,22 @@ final class NowPlayingService {
             PlaybackService.shared.remoteSeek(to: positionEvent.positionTime)
             return .success
         }
+        #endif
     }
 
     // MARK: - Now Playing Metadata Updates
 
-    /// Updates Lock Screen & Control Center metadata (`MPNowPlayingInfoCenter`).
     func updateNowPlaying(
         video: VideoItem,
         isPlaying: Bool,
         elapsedTime: TimeInterval = 0,
         duration: TimeInterval = 0
     ) {
+        #if os(iOS)
+        // Metadata is pushed to `window.__ytUpdateMediaSession` inside `WKWebView` so
+        // `WebKit.GPU` publishes Lock Screen info without interrupting HTML5 video playback.
+        return
+        #else
         let resolvedDuration = duration > 0 ? duration : Self.parseDurationSeconds(from: video.duration)
         let isLive = video.duration.uppercased() == "LIVE"
 
@@ -135,9 +141,7 @@ final class NowPlayingService {
 
         let applyBlock = {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-            #if os(macOS)
             MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
-            #endif
         }
 
         if Thread.isMainThread {
@@ -145,10 +149,13 @@ final class NowPlayingService {
         } else {
             DispatchQueue.main.async(execute: applyBlock)
         }
+        #endif
     }
 
-    /// Updates only playback rate and elapsed position without reloading artwork.
     func updatePlaybackState(isPlaying: Bool, elapsedTime: TimeInterval? = nil, duration: TimeInterval? = nil) {
+        #if os(iOS)
+        return
+        #else
         let applyBlock = {
             guard var info = MPNowPlayingInfoCenter.default().nowPlayingInfo else { return }
             info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
@@ -159,9 +166,7 @@ final class NowPlayingService {
                 info[MPMediaItemPropertyPlaybackDuration] = duration
             }
             MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-            #if os(macOS)
             MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
-            #endif
         }
 
         if Thread.isMainThread {
@@ -169,27 +174,26 @@ final class NowPlayingService {
         } else {
             DispatchQueue.main.async(execute: applyBlock)
         }
+        #endif
     }
 
-    /// Clears Lock Screen metadata when playback is stopped completely.
     func clearNowPlaying() {
         currentArtworkTask?.cancel()
         currentArtworkTask = nil
         lastLoadedVideoId = nil
         lastLoadedArtwork = nil
 
+        #if !os(iOS)
         let clearBlock = {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-            #if os(macOS)
             MPNowPlayingInfoCenter.default().playbackState = .stopped
-            #endif
         }
-
         if Thread.isMainThread {
             clearBlock()
         } else {
             DispatchQueue.main.async(execute: clearBlock)
         }
+        #endif
     }
 
     // MARK: - Helpers
@@ -234,9 +238,7 @@ final class NowPlayingService {
                         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
                     }
                 }
-            } catch {
-                // Keep text metadata even if offline or thumbnail fails to load
-            }
+            } catch {}
         }
     }
 

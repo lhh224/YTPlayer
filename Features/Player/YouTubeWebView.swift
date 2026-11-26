@@ -17,6 +17,10 @@ struct YouTubeWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
+        // Share pre-warmed HTTP3/TLS connection pool & persistent disk cache for instant stream start
+        configuration.processPool = PlaybackService.sharedProcessPool
+        configuration.websiteDataStore = .default()
+        configuration.suppressesIncrementalRendering = false
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.allowsAirPlayForMediaPlayback = true
@@ -34,11 +38,12 @@ struct YouTubeWebView: UIViewRepresentable {
         userContentController.add(context.coordinator, name: "ytPlayer")
         configuration.userContentController = userContentController
 
-        // Attach pre-compiled content rules BEFORE initializing WKWebView so loads are never interrupted
-        _ = ContentFilterService.shared.applySynchronouslyIfReady(to: configuration)
+        // Note: Do NOT attach URL regex content-blocking rules to the YouTube video stream WebView
+        // so googlevideo.com media segments stream with zero per-chunk filter overhead.
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.scrollView.isScrollEnabled = false
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.isOpaque = false
         webView.backgroundColor = .black
         #if os(iOS)
@@ -103,6 +108,9 @@ struct YouTubeWebView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
+        configuration.processPool = PlaybackService.sharedProcessPool
+        configuration.websiteDataStore = .default()
+        configuration.suppressesIncrementalRendering = false
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.allowsAirPlayForMediaPlayback = true
 
@@ -115,8 +123,6 @@ struct YouTubeWebView: NSViewRepresentable {
         userContentController.addUserScript(visibilityUserScript)
         userContentController.add(context.coordinator, name: "ytPlayer")
         configuration.userContentController = userContentController
-
-        _ = ContentFilterService.shared.applySynchronouslyIfReady(to: configuration)
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         context.coordinator.webView = webView

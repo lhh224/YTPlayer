@@ -1,8 +1,8 @@
 // PlaybackService.swift
 // YTPlayer
 //
-// Manages playback state, background audio persistence (AVAudioSession + cross-frame
-// WebKit anti-pause), Lock Screen command bridging, and YouTube IFrame embed HTML/JS.
+// Manages playback state, shared WebKit connection/cache pool, background audio
+// persistence, WebKit MediaSession Lock Screen integration, and YouTube IFrame HTML.
 
 import Foundation
 import Combine
@@ -19,6 +19,17 @@ final class PlaybackService: ObservableObject {
     private enum Keys {
         static let backgroundPlaybackEnabled = "backgroundPlaybackEnabled"
     }
+
+    // MARK: - Shared Network & WebKit Optimization Pool
+
+    /// Shared WebKit process pool so DNS, TLS 1.3 / HTTP3 QUIC sessions, and cached
+    /// YouTube player scripts (`iframe_api`, `base.js`) persist across video opens.
+    static let sharedProcessPool = WKProcessPool()
+
+    /// Verified HTTPS origin used as `baseURL` and IFrame `origin` parameter so WKWebView
+    /// sends a valid third-party `Referer` header and avoids YouTube Error 152-4 / 153.
+    static let embedOrigin = "https://lhh224.github.io"
+    static let embedBaseURL = URL(string: "https://lhh224.github.io")!
 
     // MARK: - Published State
 
@@ -41,6 +52,8 @@ final class PlaybackService: ObservableObject {
     private var wasPlayingBeforeInterruption: Bool = false
     private var hasRegisteredObservers: Bool = false
     private var isAudioSessionActive: Bool = false
+    private var hasWarmedUpWebKit: Bool = false
+    private var warmupWebView: WKWebView?
     private var cancellables: Set<AnyCancellable> = []
 
     #if canImport(UIKit)
@@ -64,11 +77,6 @@ final class PlaybackService: ObservableObject {
 
     static let shared = PlaybackService()
 
-    /// Verified HTTPS origin used as `baseURL` and IFrame `origin` parameter so WKWebView
-    /// sends a valid third-party `Referer` header and avoids YouTube Error 152-4 / 153.
-    static let embedOrigin = "https://lhh224.github.io"
-    static let embedBaseURL = URL(string: "https://lhh224.github.io")!
-
     private init() {
         if UserDefaults.standard.object(forKey: Keys.backgroundPlaybackEnabled) == nil {
             self.isBackgroundPlaybackEnabled = true
@@ -78,14 +86,42 @@ final class PlaybackService: ObservableObject {
         registerSystemObserversIfNeeded()
     }
 
-    // MARK: - Anti-Auto-Pause Visibility & Native Video Guard UserScript
+    // MARK: - Network & Player Script Pre-Warming
+
+    /// Pre-warms TLS/HTTP3 connections and caches YouTube's `iframe_api` script at app launch
+    /// so opening the first video starts almost instantaneously without cold-start buffering.
+    @MainActor
+    func prewarmNetworkAndPlayerCache() {
+        guard !hasWarmedUpWebKit else { return }
+        hasWarmedUpWebKit = true
+
+        let config = WKWebViewConfiguration()
+        config.processPool = Self.sharedProcessPool
+        config.websiteDataStore = .default()
+        let wv = WKWebView(frame: .zero, configuration: config)
+        self.warmupWebView = wv
+
+        let prewarmHTML = """
+        <!DOCTYPE html><html><head>
+        <link rel="preconnect" href="https://www.youtube.com" crossorigin>
+        <link rel="preconnect" href="https://i.ytimg.com" crossorigin>
+        <link rel="preconnect" href="https://googlevideo.com" crossorigin>
+        <script src="https://www.youtube.com/iframe_api" async></script>
+        </head><body></body></html>
+        """
+        wv.loadHTMLString(prewarmHTML, baseURL: Self.embedBaseURL)
+
+        // Release temporary warmup view once scripts/connections are cached in sharedProcessPool
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8.0) { [weak self] in
+            self?.warmupWebView = nil
+        }
+    }
+
+    // MARK: - Anti-Auto-Pause Visibility Override UserScript
 
     /// JavaScript injected into BOTH the host document and child YouTube embed iframes
-    /// (`forMainFrameOnly: false`) to:
-    /// 1. Override `document.hidden` (`false`) and `document.visibilityState` (`'visible'`).
-    /// 2. Block `visibilitychange` and `webkitvisibilitychange` events.
-    /// 3. Resume the underlying HTML5 `<video>` element inside the YouTube iframe ONLY when
-    ///    the app is actually in the background and WebKit involuntarily paused it.
+    /// (`forMainFrameOnly: false`) to prevent Page Visibility detection from pausing audio
+    /// when locking the iPhone screen or moving the app to the background.
     static let visibilityOverrideScript: String = """
     (function() {
         if (window.__ytVisibilityOverrideInstalled) { return; }
@@ -153,7 +189,7 @@ final class PlaybackService: ObservableObject {
             }
         }, true);
 
-        // Catch involuntary WebKit C++ <video> pause inside YouTube iframe ONLY while app is in background
+        // Resume underlying HTML5 <video> inside YouTube iframe ONLY if WebKit auto-paused on screen lock
         document.addEventListener('pause', function(ev) {
             var target = ev && ev.target;
             if (target && target.tagName === 'VIDEO' &&
@@ -165,7 +201,7 @@ final class PlaybackService: ObservableObject {
                         var p = target.play();
                         if (p && typeof p.catch === 'function') { p.catch(function(){}); }
                     }
-                }, 80);
+                }, 120);
             }
         }, true);
     })();
@@ -174,10 +210,16 @@ final class PlaybackService: ObservableObject {
     // MARK: - Public API (HTML & URL Builders)
 
     /// Build a fully self-contained HTML page that loads the YouTube IFrame Player API
-    /// with non-disruptive mobile autoplay, Page Visibility spoofing, and background pause recovery.
-    func buildEmbedHTML(videoId: String, autoplay: Bool = false) -> String {
+    /// with preconnect hints, native WebKit `navigator.mediaSession` Lock Screen integration
+    /// (avoiding UIProcess/WebKit.GPU NowPlaying conflicts!), and smooth adaptive streaming.
+    func buildEmbedHTML(videoId: String, autoplay: Bool = false, initialVideo: VideoItem? = nil) -> String {
         let autoplayValue = autoplay ? 1 : 0
         let bgEnabledLiteral = isBackgroundPlaybackEnabled ? "true" : "false"
+        let metaVideo = initialVideo ?? currentVideo
+        let safeTitle = Self.escapeJSString(metaVideo?.title ?? "YT Player")
+        let safeArtist = Self.escapeJSString(metaVideo?.channelName ?? "YouTube")
+        let safeThumb = Self.escapeJSString(metaVideo?.thumbnailURL ?? "https://i.ytimg.com/vi/\(videoId)/hqdefault.jpg")
+
         return """
         <!DOCTYPE html>
         <html>
@@ -185,10 +227,14 @@ final class PlaybackService: ObservableObject {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
             <meta name="referrer" content="strict-origin-when-cross-origin">
+            <link rel="preconnect" href="https://www.youtube.com" crossorigin>
+            <link rel="preconnect" href="https://i.ytimg.com" crossorigin>
+            <link rel="preconnect" href="https://googlevideo.com" crossorigin>
+            <link rel="dns-prefetch" href="https://static.doubleclick.net">
             <style>
                 * { margin: 0; padding: 0; box-sizing: border-box; }
                 html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
-                #player { width: 100%; height: 100%; }
+                #player { width: 100%; height: 100%; transform: translateZ(0); }
             </style>
             <script>
             \(Self.visibilityOverrideScript)
@@ -198,17 +244,70 @@ final class PlaybackService: ObservableObject {
             <div id="player"></div>
             <script>
                 var player;
-                var progressInterval = null;
                 var shouldAutoplayInitial = (\(autoplayValue) === 1);
                 window.__ytAppInBackground = false;
                 window.__ytBgEnabled = \(bgEnabledLiteral);
                 window.__ytUserPaused = false;
                 window.__ytBgTransitionAt = 0;
+                window.__ytMeta = {
+                    title: '\(safeTitle)',
+                    artist: '\(safeArtist)',
+                    thumb: '\(safeThumb)'
+                };
 
                 function postToNative(payload) {
                     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.ytPlayer) {
                         window.webkit.messageHandlers.ytPlayer.postMessage(JSON.stringify(payload));
                     }
+                }
+
+                // Native WebKit MediaSession integration: runs directly inside WebKit's media
+                // process so Lock Screen & Control Center never conflict with WKWebView audio!
+                window.__ytUpdateMediaSession = function(title, artist, thumb) {
+                    if (title) { window.__ytMeta.title = title; }
+                    if (artist) { window.__ytMeta.artist = artist; }
+                    if (thumb) { window.__ytMeta.thumb = thumb; }
+                    if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') { return; }
+                    try {
+                        navigator.mediaSession.metadata = new MediaMetadata({
+                            title: window.__ytMeta.title || 'YT Player',
+                            artist: window.__ytMeta.artist || 'YouTube',
+                            artwork: window.__ytMeta.thumb ? [
+                                { src: window.__ytMeta.thumb, sizes: '480x360', type: 'image/jpeg' }
+                            ] : []
+                        });
+                    } catch (e) {}
+                };
+
+                function installMediaSessionHandlers() {
+                    if (!('mediaSession' in navigator)) { return; }
+                    window.__ytUpdateMediaSession();
+                    var actions = {
+                        play: function() {
+                            window.__ytSetUserPaused(false);
+                            if (player && typeof player.playVideo === 'function') { player.playVideo(); }
+                            postToNative({ event: 'onRemoteCommand', command: 'play' });
+                        },
+                        pause: function() {
+                            window.__ytSetUserPaused(true);
+                            if (player && typeof player.pauseVideo === 'function') { player.pauseVideo(); }
+                            postToNative({ event: 'onRemoteCommand', command: 'pause' });
+                        },
+                        nexttrack: function() {
+                            postToNative({ event: 'onRemoteCommand', command: 'nextTrack' });
+                        },
+                        previoustrack: function() {
+                            postToNative({ event: 'onRemoteCommand', command: 'previousTrack' });
+                        },
+                        seekto: function(details) {
+                            if (details && typeof details.seekTime === 'number' && player && typeof player.seekTo === 'function') {
+                                player.seekTo(details.seekTime, true);
+                            }
+                        }
+                    };
+                    Object.keys(actions).forEach(function(key) {
+                        try { navigator.mediaSession.setActionHandler(key, actions[key]); } catch (e) {}
+                    });
                 }
 
                 function broadcastGuardToChildIframe(forcePlay) {
@@ -248,14 +347,16 @@ final class PlaybackService: ObservableObject {
                     broadcastGuardToChildIframe(false);
                 };
 
-                // Single gentle autoplay kick: ONLY calls playVideo() if player is idle/cued,
-                // NEVER interrupting BUFFERING (3) or active stream initialization.
+                // Non-disruptive autoplay: waits 180ms to let YouTube's own autoplay start first,
+                // and ONLY calls playVideo() if the player is still sitting idle in CUED (5) or UNSTARTED (-1).
                 window.__ytTriggerAutoplay = function() {
-                    if (!player || typeof player.playVideo !== 'function' || window.__ytUserPaused) { return; }
-                    var st = (typeof player.getPlayerState === 'function') ? player.getPlayerState() : -1;
-                    if (st !== 1 && st !== 3) {
-                        try { player.playVideo(); } catch (e) {}
-                    }
+                    setTimeout(function() {
+                        if (!player || typeof player.playVideo !== 'function' || window.__ytUserPaused) { return; }
+                        var st = (typeof player.getPlayerState === 'function') ? player.getPlayerState() : -1;
+                        if (st === 5 || st === -1) {
+                            try { player.playVideo(); } catch (e) {}
+                        }
+                    }, 180);
                 };
 
                 var tag = document.createElement('script');
@@ -297,23 +398,13 @@ final class PlaybackService: ObservableObject {
                     postToNative(payload);
                 }
 
-                function startProgressTimer() {
-                    if (progressInterval) { clearInterval(progressInterval); }
-                    progressInterval = setInterval(function() {
-                        if (player && typeof player.getPlayerState === 'function' && player.getPlayerState() === YT.PlayerState.PLAYING) {
-                            emitProgressSnapshot('onTimeUpdate');
-                        }
-                    }, 2000);
-                }
-
-                function stopProgressTimer() {
-                    if (progressInterval) {
-                        clearInterval(progressInterval);
-                        progressInterval = null;
-                    }
-                }
-
                 function onPlayerReady(event) {
+                    installMediaSessionHandlers();
+                    try {
+                        if (player && typeof player.setPlaybackQualityRange === 'function') {
+                            player.setPlaybackQualityRange('default', 'hd1080');
+                        }
+                    } catch (e) {}
                     var dur = (player && typeof player.getDuration === 'function') ? (player.getDuration() || 0) : 0;
                     postToNative({
                         event: 'onReady',
@@ -347,16 +438,20 @@ final class PlaybackService: ObservableObject {
 
                     if (state === YT.PlayerState.PLAYING) {
                         window.__ytUserPaused = false;
-                        startProgressTimer();
-                    } else if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.ENDED) {
-                        stopProgressTimer();
+                        window.__ytUpdateMediaSession();
+                        if ('mediaSession' in navigator) {
+                            try { navigator.mediaSession.playbackState = 'playing'; } catch (e) {}
+                        }
+                    } else if (state === YT.PlayerState.PAUSED) {
+                        if ('mediaSession' in navigator) {
+                            try { navigator.mediaSession.playbackState = 'paused'; } catch (e) {}
+                        }
                     }
 
                     emitProgressSnapshot('onStateChange', state);
                 }
 
                 function onPlayerError(event) {
-                    stopProgressTimer();
                     postToNative({
                         event: 'onError',
                         data: event.data
@@ -392,6 +487,14 @@ final class PlaybackService: ObservableObject {
             duration = NowPlayingService.parseDurationSeconds(from: video.duration)
         }
         ensureAudioSessionConfiguredOnce()
+
+        // Push metadata into WebKit's native navigator.mediaSession so Lock Screen shows
+        // song title, channel, and artwork WITHOUT fighting WebKit.GPU's audio session!
+        let safeTitle = Self.escapeJSString(video.title)
+        let safeArtist = Self.escapeJSString(video.channelName)
+        let safeThumb = Self.escapeJSString(video.thumbnailURL)
+        jsCommandExecutor?("if (window.__ytUpdateMediaSession) { window.__ytUpdateMediaSession('\(safeTitle)', '\(safeArtist)', '\(safeThumb)'); }")
+
         NowPlayingService.shared.configureRemoteCommands()
         NowPlayingService.shared.updateNowPlaying(
             video: video,
@@ -439,8 +542,6 @@ final class PlaybackService: ObservableObject {
         playbackQueue = videos
     }
 
-    /// Whether a `YT.PlayerState.PAUSED` event from WebKit was triggered involuntarily
-    /// by entering the background / locking the screen rather than user action.
     var shouldAutoResumeInBackground: Bool {
         guard isBackgroundPlaybackEnabled, !isUserPaused else { return false }
         if isAppInBackground { return true }
@@ -451,14 +552,12 @@ final class PlaybackService: ObservableObject {
         return false
     }
 
-    /// Resumes the YouTube IFrame player ONLY if it is actually paused (state == 2) in background,
-    /// never interrupting active playback (1) or buffering (3).
     func attemptBackgroundAutoResume() {
         guard shouldAutoResumeInBackground else { return }
         ensureAudioSessionConfiguredOnce()
         jsCommandExecutor?("window.__ytSetUserPaused && window.__ytSetUserPaused(false); window.__ytSetBackgroundState && window.__ytSetBackgroundState(true, true); if (window.player && typeof player.getPlayerState === 'function' && player.getPlayerState() === 2) { player.playVideo(); }")
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             guard let self = self, self.shouldAutoResumeInBackground else { return }
             self.jsCommandExecutor?("if (window.player && typeof player.getPlayerState === 'function' && player.getPlayerState() === 2) { player.playVideo(); }")
         }
@@ -603,7 +702,8 @@ final class PlaybackService: ObservableObject {
 
     // MARK: - Private Audio Session Management
 
-    /// Configures `.playback` category ONCE so UIProcess never interrupts `WebKit.GPU`'s active YouTube media stream.
+    /// Configures `.playback` with `.moviePlayback` and `.mixWithOthers` ONCE so UIProcess
+    /// and `WebKit.GPU` share the audio session harmoniously without ever pausing `<video>`.
     func ensureAudioSessionConfiguredOnce() {
         guard !isAudioSessionActive else { return }
         forceReactivateAudioSession()
@@ -613,13 +713,21 @@ final class PlaybackService: ObservableObject {
         #if os(iOS)
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [])
+            try session.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
             try session.setActive(true)
             isAudioSessionActive = true
         } catch {
             print("[PlaybackService] AVAudioSession activation error: \(error.localizedDescription)")
         }
         #endif
+    }
+
+    private static func escapeJSString(_ input: String) -> String {
+        input
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
     }
 
     private func syncBackgroundFlagToWebView() {
@@ -699,11 +807,6 @@ final class PlaybackService: ObservableObject {
             wasPlayingBeforeInterruption = isPlaying && !isUserPaused
             if isPlaying {
                 isPlaying = false
-                NowPlayingService.shared.updatePlaybackState(
-                    isPlaying: false,
-                    elapsedTime: currentTime,
-                    duration: duration
-                )
             }
 
         case .ended:

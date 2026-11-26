@@ -135,3 +135,14 @@
   1. Gỡ bỏ hoàn toàn `keepAliveAudioPlayer` (`AVAudioPlayer`), chỉ khởi tạo `AVAudioSession(.playback)` đúng 1 lần duy nhất (`ensureAudioSessionConfiguredOnce()`) để tiến trình `WebKit.GPU` giữ trọn vẹn phiên phát âm thanh.
   2. Đơn giản hóa `__ytTriggerAutoplay()` chỉ gọi `player.playVideo()` đúng 1 lần khi `onPlayerReady` (không bao giờ can thiệp khi `state === 1` hoặc `state === 3` đang buffering), và gắn `ContentFilterService` đồng bộ trước khi khởi tạo `WKWebView`. Nâng phiên bản lên `2.1.2 (Build 4)`.
 - **Trạng thái:** 🟢 Fixed
+
+### [PLAY-004] Xung đột quyền điều khiển `MPNowPlayingInfoCenter` / `MPRemoteCommandCenter` giữa UIProcess và `WebKit.GPU` gây tự pause định kỳ + Tối ưu đường truyền video (`2.1.3`)
+- **Ngày phát hiện:** 2026-11-26
+- **Mức độ:** Critical
+- **Nguyên nhân gốc rễ:**
+  1. Trên iOS, `WKWebView` phát HTML5 `<video>` bên trong tiến trình riêng `com.apple.WebKit.GPU` và tự động đăng ký quyền sở hữu `MPNowPlayingInfoCenter` + `MPRemoteCommandCenter` với `MRMediaRemote`. Khi `NowPlayingService` ở UIProcess đồng thời đăng ký `MPRemoteCommandCenter` và ghi đè `MPNowPlayingInfoCenter.default().nowPlayingInfo` định kỳ mỗi 2 giây (`onTimeUpdate`), iOS `MediaRemote` phát hiện tranh chấp hai tiến trình ("Double Ownership") và gửi lệnh `Pause` xuống trình phát của `WebKit.GPU` liên tục.
+  2. Mỗi lần mở `WKWebView` trước đây tạo mới `WKProcessPool` (phải bắt tay lại TLS/QUIC và tải lại ~1.8MB script `base.js` của YouTube), đồng thời gắn bộ lọc regex URL lên từng phân đoạn video `googlevideo.com`.
+- **Cách sửa triệt để:**
+  1. Chuyển toàn bộ hiển thị Lock Screen & nút điều khiển phần cứng trên iOS sang `navigator.mediaSession` gốc ngay bên trong `WKWebView` (`__ytUpdateMediaSession` + `setActionHandler` kết nối ngược về `PlayerViewModel` qua `onRemoteCommand`), nhường 100% quyền `MPNowPlayingInfoCenter` cho tiến trình `WebKit.GPU` (loại bỏ hoàn toàn xung đột `MRMediaRemote` và bỏ timer polling 2 giây), đồng thời cấu hình `AVAudioSession` với `.moviePlayback` + `[.mixWithOthers]`.
+  2. Tối ưu đường truyền phát video: dùng chung `PlaybackService.sharedProcessPool` + `WKWebsiteDataStore.default()`, khởi động ấm kết nối (`prewarmNetworkAndPlayerCache` với `<link rel="preconnect">` tới `youtube.com`, `googlevideo.com`, `i.ytimg.com` ngay khi mở app), gỡ bỏ đánh giá regex `WKContentRuleList` trên luồng video YouTube và giới hạn dải ABR tối ưu `hd1080` cho màn hình iPhone. Nâng phiên bản lên `2.1.3 (Build 5)`.
+- **Trạng thái:** 🟢 Fixed

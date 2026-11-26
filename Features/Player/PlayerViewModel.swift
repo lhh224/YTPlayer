@@ -56,7 +56,7 @@ final class PlayerViewModel: ObservableObject {
         self.initialVideoId = video.id
         self.libraryRepo = libraryRepo
         self.isFavorite = libraryRepo.isFavorite(videoId: video.id)
-        self.embedHTML = PlaybackService.shared.buildEmbedHTML(videoId: video.id, autoplay: true)
+        self.embedHTML = PlaybackService.shared.buildEmbedHTML(videoId: video.id, autoplay: true, initialVideo: video)
 
         if !queue.isEmpty {
             PlaybackService.shared.updateQueue(queue)
@@ -136,6 +136,24 @@ final class PlayerViewModel: ObservableObject {
 
         case "onTimeUpdate":
             PlaybackService.shared.updateProgress(currentTime: currentTime, duration: duration)
+
+        case "onRemoteCommand":
+            if let cmd = json["command"] as? String {
+                switch cmd {
+                case "play":
+                    playerState = .playing
+                    PlaybackService.shared.play(video: video)
+                case "pause":
+                    playerState = .paused
+                    PlaybackService.shared.pause(userInitiated: true)
+                case "nextTrack":
+                    playNextTrack()
+                case "previousTrack":
+                    playPreviousTrack()
+                default:
+                    break
+                }
+            }
 
         case "onBackgroundAutoResume":
             // JS intercepted an involuntary background pause; ensure native session stays active
