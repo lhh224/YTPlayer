@@ -102,6 +102,19 @@ final class PlayerViewModel: ObservableObject {
                 self?.seekTo(seconds: seconds)
             }
         }
+        PlaybackService.shared.onSelectVideoFromApp = { [weak self] nextVideo, queue in
+            Task { @MainActor in
+                guard let self = self else { return }
+                if !queue.isEmpty {
+                    PlaybackService.shared.updateQueue(queue)
+                }
+                if self.video.id != nextVideo.id {
+                    self.switchTrack(to: nextVideo)
+                } else if !self.isPlaying {
+                    self.playPlayer()
+                }
+            }
+        }
     }
 
     func handleJSMessage(_ message: String) {
@@ -233,7 +246,7 @@ final class PlayerViewModel: ObservableObject {
         playerState = .loading
         addToHistory()
         PlaybackService.shared.play(video: nextVideo)
-        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(false); if (window.player && typeof player.loadVideoById === 'function') { player.loadVideoById('\(nextVideo.id)'); }")
+        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(false); if (window.player && typeof player.loadVideoById === 'function') { player.loadVideoById('\(nextVideo.id)'); if (window.__ytTriggerAutoplay) { window.__ytTriggerAutoplay(); } }")
         Task {
             await loadFullDetailsIfNeeded()
         }

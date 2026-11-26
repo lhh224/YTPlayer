@@ -116,20 +116,18 @@ struct SearchView: View {
                         Text(warning)
                             .font(.ytCaption)
                             .foregroundColor(.ytSecondaryText)
-                        Button("Cấu hình YouTube API Key trong Cài đặt") {
-                            router.selectedTab = 3
-                        }
-                        .font(.ytCaption)
-                        .foregroundColor(.ytRed)
                     }
                     .padding(.vertical, Spacing.xs)
                 }
             }
 
             ForEach(videos) { video in
-                NavigationLink(destination: PlayerView(video: video, queue: videos)) {
+                Button {
+                    router.presentPlayer(video: video, queue: videos)
+                } label: {
                     SearchResultRow(video: video)
                 }
+                .buttonStyle(.plain)
                 .listRowInsets(EdgeInsets(top: Spacing.sm, leading: Spacing.md, bottom: Spacing.sm, trailing: Spacing.md))
                 .onAppear {
                     if video.id == videos.last?.id {
@@ -172,17 +170,10 @@ struct SearchView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Spacing.xl)
 
-            HStack(spacing: Spacing.md) {
-                Button("Thử lại") {
-                    vm.searchImmediate()
-                }
-                .buttonStyle(PrimaryButtonStyle())
-
-                Button("Cài đặt API Key") {
-                    router.selectedTab = 3
-                }
-                .buttonStyle(SecondaryButtonStyle())
+            Button("Thử lại") {
+                vm.searchImmediate()
             }
+            .buttonStyle(PrimaryButtonStyle())
             Spacer()
         }
     }

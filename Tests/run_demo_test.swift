@@ -85,10 +85,13 @@ struct DemoTestSuite {
 
         let htmlAutoplay = playback.buildEmbedHTML(videoId: "dQw4w9WgXcQ", autoplay: true)
         assertTest(htmlAutoplay.contains("'autoplay': 1"), "Cấu hình Autoplay bật khi autoplay=true")
+        assertTest(htmlAutoplay.contains("window.__ytTriggerAutoplay()"), "Tự động kích hoạt playVideo() trong onPlayerReady cho Mobile WebKit")
+        assertTest(htmlAutoplay.contains("https://lhh224.github.io"), "Cấu hình embedOrigin hợp lệ tránh lỗi 152-4 trên ESign")
         assertTest(htmlAutoplay.contains("Object.defineProperty(document, 'hidden'") && htmlAutoplay.contains("return false"), "Ghi đè document.hidden luôn trả về false")
         assertTest(htmlAutoplay.contains("Object.defineProperty(document, 'visibilityState'") && htmlAutoplay.contains("return 'visible'"), "Ghi đè document.visibilityState luôn trả về 'visible'")
         assertTest(htmlAutoplay.contains("stopImmediatePropagation"), "Chặn lan truyền sự kiện visibilitychange bằng stopImmediatePropagation()")
         assertTest(htmlAutoplay.contains("state === YT.PlayerState.PAUSED") && htmlAutoplay.contains("player.playVideo()"), "Tự động gọi lại player.playVideo() khi bị auto-pause trong nền")
+        assertTest(htmlAutoplay.contains("__ytSyncGuard") && htmlAutoplay.contains("target.tagName === 'VIDEO'"), "Bảo vệ trực tiếp thẻ <video> trong iframe con khi khóa màn hình")
 
         // Kiểm thử NowPlayingService & đồng bộ Lock Screen / SleepTimer
         assertTest(NowPlayingService.parseDurationSeconds(from: "4:15") == 255, "Chuyển đổi thời lượng 4:15 -> 255s cho Lock Screen")

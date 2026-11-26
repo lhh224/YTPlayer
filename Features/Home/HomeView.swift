@@ -23,7 +23,9 @@ struct HomeView: View {
                             )
 
                             ForEach(vm.videos) { video in
-                                NavigationLink(destination: PlayerView(video: video, queue: vm.videos)) {
+                                Button {
+                                    router.presentPlayer(video: video, queue: vm.videos)
+                                } label: {
                                     VideoCardView(video: video)
                                 }
                                 .buttonStyle(.plain)
@@ -84,12 +86,6 @@ struct HomeView: View {
                 .font(.ytCaption)
                 .foregroundColor(.ytSecondaryText)
                 .lineLimit(3)
-
-            Button("Mở Cài đặt API Key") {
-                router.selectedTab = 3
-            }
-            .font(.ytCaption)
-            .foregroundColor(.ytRed)
         }
         .padding(Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)

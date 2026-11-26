@@ -99,3 +99,16 @@
   4. Tạo `Services/NowPlayingService.swift` tích hợp `MPNowPlayingInfoCenter` (tiêu đề, tên kênh, thời lượng, tiến độ, ảnh thumbnail bất đồng bộ có cache) và `MPRemoteCommandCenter` (Play, Pause, Toggle, Next, Previous, Seek) đồng bộ hai chiều với `PlaybackService`, `PlayerViewModel` và `SleepTimerService`.
 - **Kiểm thử:** Chạy `./test.sh` đạt 40/40 file Swift typecheck 0 lỗi và toàn bộ unit test đạt 100%; kiểm tra `plutil -lint` hợp lệ cho `Resources/Info.plist` và `YTPlayer.xcodeproj/project.pbxproj`.
 - **Trạng thái:** 🟢 Fixed
+
+### [BG-002] Video trên ESign chưa tự động phát (Autoplay) & củng cố giữ luồng phát nền qua Mini Player + Keep-Alive PCM
+- **Ngày phát hiện:** 2026-11-26
+- **Mức độ:** Major
+- **Nguyên nhân:**
+  1. **Autoplay:** Với `customUserAgent` Mobile Safari (`iPhone`), YouTube IFrame API tự động bỏ qua tham số `playerVars.autoplay = 1` và dừng ở trạng thái `CUED (5)` nếu không gọi tường minh `player.playVideo()` ngay trong `onPlayerReady`.
+  2. **Background Audio & Minimize:** Khi nhấn nút thu nhỏ `∨` trước đây `NavigationLink` hủy `PlayerView` làm mất `WKWebView`. Ngoài ra khi khóa màn hình iOS, tiến trình `WebKit.GPU` tạm dừng trực tiếp thẻ `<video>` trong khoảng ~100ms chuyển trạng thái khiến `SpringBoard` có thể treo IPC của `WebContent` trước khi lệnh `playVideo()` kịp chạy; ở chế độ Music kích thước khung `height: 1` cũng dễ bị WebKit đánh dấu `visuallyIdle`.
+  3. **Bộ lọc nội dung (`ContentFilterService`):** Gọi `apply` bất đồng bộ sau `loadHTMLString` gây trễ gắn rule list; đồng thời theo chính sách YouTube & `AGENT_RULES.md`, không thể chặn máy chủ kiểm tra quảng cáo trong luồng video (`doubleclick.net`) vì sẽ kích hoạt lỗi khóa phát `152 - 4`.
+- **Cách sửa:**
+  1. Bổ sung `window.__ytTriggerAutoplay()` ngay trong `onPlayerReady` và khi `switchTrack` (có cơ chế retry 320ms/900ms và auto-unmute nếu bị chính sách di động giữ lại).
+  2. Chuyển trình phát sang Persistent Player + **Mini Player** trong `ContentView` / `AppRouter` (bấm `∨` thu nhỏ xuống thanh Mini Player, giữ nguyên `WKWebView` kích thước tối thiểu `160x90`), kết hợp bộ giữ phiên `AVAudioPlayer` PCM siêu êm (`volume = 0.01`) trong `PlaybackService` và listener `pause` trực tiếp trên thẻ `<video>` bên trong iframe con (`__ytSyncGuard`).
+  3. Biên dịch trước (`preload`) và gắn đồng bộ `WKContentRuleList` trong `ContentFilterService` cho các domain theo dõi web bên thứ ba mà không chạm tới hạ tầng luồng phát YouTube.
+- **Trạng thái:** 🟢 Fixed

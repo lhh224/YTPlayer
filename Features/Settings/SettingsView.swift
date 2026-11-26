@@ -12,60 +12,6 @@ struct SettingsView: View {
     var body: some View {
         navigationContainer {
             Form {
-                // MARK: - YouTube Data API v3
-                Section(
-                    header: Text("Kết nối YouTube Data API v3"),
-                    footer: Text("Để tìm kiếm trực tiếp, khóa API cần bật dịch vụ 'YouTube Data API v3' trong Google Cloud Console (APIs & Services → Library).")
-                ) {
-                    TextField("Dán YouTube API Key (AIzaSy...)", text: $vm.apiKeyInput)
-                        .autocorrectionDisabled(true)
-                        #if os(iOS)
-                        .textInputAutocapitalization(.never)
-                        #endif
-
-                    HStack {
-                        Button("Lưu & Kiểm tra kết nối") {
-                            vm.saveAndTestAPIKey()
-                        }
-                        .foregroundColor(.ytRed)
-
-                        Spacer()
-
-                        if !vm.apiKeyInput.isEmpty {
-                            Button("Xóa khóa", role: .destructive) {
-                                vm.clearCustomAPIKey()
-                            }
-                            .font(.caption)
-                        }
-                    }
-
-                    switch vm.apiTestState {
-                    case .idle:
-                        EmptyView()
-                    case .testing:
-                        HStack(spacing: 8) {
-                            ProgressView()
-                            Text("Đang kiểm tra kết nối với máy chủ Google...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    case .success(let msg):
-                        Text("✓ \(msg)")
-                            .font(.caption)
-                            .foregroundColor(.green)
-                    case .failure(let err):
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("✕ \(err)")
-                                .font(.caption)
-                                .foregroundColor(.red)
-                            if let consoleURL = URL(string: "https://console.cloud.google.com/apis/library/youtube.googleapis.com") {
-                                Link("Mở Google Cloud để bật YouTube Data API v3 →", destination: consoleURL)
-                                    .font(.caption)
-                            }
-                        }
-                    }
-                }
-
                 // MARK: - Phát trong nền
                 Section(
                     header: Text("Phát nhạc & Video"),

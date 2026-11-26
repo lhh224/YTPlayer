@@ -214,28 +214,30 @@ final class YouTubeAPIService: ObservableObject {
     private var cache: [String: CacheEntry] = [:]
     private let decoder = JSONDecoder()
 
-    /// Resolves the active API key: UserDefaults override -> Info.plist -> Config/APIKeys.plist
+    /// Resolves the active API key:
+    /// 1. `Config/APIKeys.plist` (or `Info.plist`) so code/config edits always take effect immediately.
+    /// 2. One-time persisted key in `UserDefaults` (`customYouTubeAPIKey`) if plist is unconfigured.
     var currentAPIKey: String {
-        if let custom = UserDefaults.standard.string(forKey: Self.customAPIKeyDefaultsKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !custom.isEmpty {
-            return custom
-        }
-
-        if let key = Bundle.main.object(forInfoDictionaryKey: "YouTubeAPIKey") as? String {
-            let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty && trimmed != "YOUR_API_KEY_HERE" {
-                return trimmed
-            }
-        }
-
         if let path = Bundle.main.path(forResource: "APIKeys", ofType: "plist"),
            let dict = NSDictionary(contentsOfFile: path) as? [String: Any],
            let key = dict["YouTubeAPIKey"] as? String {
             let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty && trimmed != "YOUR_API_KEY_HERE" {
+            if !trimmed.isEmpty && trimmed != "YOUR_API_KEY_HERE" && !trimmed.hasPrefix("YOUR_") {
                 return trimmed
             }
+        }
+
+        if let key = Bundle.main.object(forInfoDictionaryKey: "YouTubeAPIKey") as? String {
+            let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty && trimmed != "YOUR_API_KEY_HERE" && !trimmed.hasPrefix("YOUR_") {
+                return trimmed
+            }
+        }
+
+        if let custom = UserDefaults.standard.string(forKey: Self.customAPIKeyDefaultsKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !custom.isEmpty {
+            return custom
         }
 
         return ""

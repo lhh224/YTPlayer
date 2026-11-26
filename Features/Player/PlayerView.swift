@@ -3,10 +3,15 @@
 // Swift 5.7, iOS 16.0
 
 import SwiftUI
+#if canImport(UIKit)
+import MediaPlayer
+import UIKit
+#endif
 
 struct PlayerView: View {
     let video: VideoItem
     @StateObject private var vm: PlayerViewModel
+    @EnvironmentObject var router: AppRouter
     @EnvironmentObject var libraryRepo: LibraryRepository
     @Environment(\.dismiss) private var dismiss
     @State private var showUpNextSheet = false
@@ -24,22 +29,31 @@ struct PlayerView: View {
         )
     }
 
-    var body: some View {
-        ZStack {
-            Color.ytBackground.ignoresSafeArea()
+    private var isMinimized: Bool {
+        router.activePlayerVideo != nil && router.isPlayerMinimized
+    }
 
-            // Ambient Back-Glow in Music Mode
-            if vm.displayMode == .music {
-                AsyncImageView(urlString: vm.video.thumbnailURL, aspectRatio: 1.0)
-                    .blur(radius: 48)
-                    .opacity(0.35)
-                    .ignoresSafeArea()
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            if !isMinimized {
+                Color.ytBackground.ignoresSafeArea()
+
+                // Ambient Back-Glow in Music Mode
+                if vm.displayMode == .music {
+                    AsyncImageView(urlString: vm.video.thumbnailURL, aspectRatio: 1.0)
+                        .blur(radius: 48)
+                        .opacity(0.35)
+                        .ignoresSafeArea()
+                }
             }
 
             VStack(spacing: 0) {
-                topHeaderBar
+                if !isMinimized {
+                    topHeaderBar
+                }
 
-                // Shared Media Stage
+                // Shared Media Stage: WKWebView NEVER unmounts and ALWAYS retains >= 160x90
+                // viewport bounds so WebKit never marks the media page visually idle in background.
                 ZStack {
                     YouTubeWebView(
                         html: vm.embedHTML,
@@ -51,23 +65,38 @@ struct PlayerView: View {
                         }
                     )
                     .aspectRatio(16 / 9, contentMode: .fit)
-                    .opacity(vm.displayMode == .video ? 1 : 0.01)
-                    .frame(height: vm.displayMode == .video ? nil : 1)
+                    .frame(
+                        width: (!isMinimized && vm.displayMode == .video) ? nil : 160,
+                        height: (!isMinimized && vm.displayMode == .video) ? nil : 90
+                    )
+                    .opacity((!isMinimized && vm.displayMode == .video) ? 1.0 : 0.02)
+                    .allowsHitTesting(!isMinimized && vm.displayMode == .video)
 
-                    if vm.displayMode == .music {
+                    if !isMinimized && vm.displayMode == .music {
                         musicArtworkCard
                             .transition(.scale(scale: 0.92).combined(with: .opacity))
                     }
                 }
+                .frame(height: isMinimized ? 0 : nil)
+                .clipped()
                 .animation(.spring(response: 0.42, dampingFraction: 0.84), value: vm.displayMode)
 
-                if vm.displayMode == .music {
-                    musicControlsSection
-                        .transition(.opacity)
-                } else {
-                    videoDetailsSection
-                        .transition(.opacity)
+                if !isMinimized {
+                    if vm.displayMode == .music {
+                        musicControlsSection
+                            .transition(.opacity)
+                    } else {
+                        videoDetailsSection
+                            .transition(.opacity)
+                    }
                 }
+            }
+
+            if isMinimized {
+                miniPlayerBar
+                    .padding(.horizontal, Spacing.sm)
+                    .padding(.bottom, 54)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         #if os(iOS)
@@ -89,14 +118,99 @@ struct PlayerView: View {
         }
     }
 
+    // MARK: - Persistent Mini Player Bar (above TabBar when minimized with "∨")
+
+    private var miniPlayerBar: some View {
+        HStack(spacing: Spacing.sm) {
+            Button {
+                router.expandPlayer()
+            } label: {
+                HStack(spacing: Spacing.sm) {
+                    AsyncImageView(urlString: vm.video.thumbnailURL)
+                        .frame(width: 52, height: 38)
+                        .cornerRadius(8)
+                        .clipped()
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(vm.video.title)
+                            .font(.ytCaption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.ytPrimaryText)
+                            .lineLimit(1)
+                        Text(vm.video.channelName)
+                            .font(.system(size: 11))
+                            .foregroundColor(.ytSecondaryText)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 4)
+                }
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                vm.togglePlayPause()
+            } label: {
+                Image(systemName: vm.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.ytPrimaryText)
+                    .frame(width: 34, height: 34)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                vm.playNextTrack()
+            } label: {
+                Image(systemName: "forward.end.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.ytPrimaryText)
+                    .frame(width: 30, height: 34)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                closePlayerCompletely()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.ytSecondaryText)
+                    .frame(width: 30, height: 34)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, Spacing.sm)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color.ytSurface)
+                .shadow(color: Color.black.opacity(0.35), radius: 10, x: 0, y: 4)
+        )
+    }
+
+    private func minimizeOrDismiss() {
+        if router.activePlayerVideo != nil {
+            router.minimizePlayer()
+        } else {
+            dismiss()
+        }
+    }
+
+    private func closePlayerCompletely() {
+        vm.stopAndClosePlayer()
+        if router.activePlayerVideo != nil {
+            router.closePlayer()
+        } else {
+            dismiss()
+        }
+    }
+
     // MARK: - Top Header + Glowing Red-to-Orange Segmented Capsule
 
     private var topHeaderBar: some View {
         VStack(spacing: Spacing.sm) {
             HStack {
-                // Chevron "∨" ONLY — no "Thu nhỏ" text
+                // Chevron "∨": Minimizes to persistent Mini Player so background music keeps playing
                 Button {
-                    dismiss()
+                    minimizeOrDismiss()
                 } label: {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 17, weight: .semibold))
@@ -125,8 +239,7 @@ struct PlayerView: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        vm.stopAndClosePlayer()
-                        dismiss()
+                        closePlayerCompletely()
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 15, weight: .medium))
@@ -190,27 +303,13 @@ struct PlayerView: View {
     // MARK: - Music Mode Views (20px Rounded Square Artwork + Audio Wave + "+ Playlist")
 
     private var musicArtworkCard: some View {
-        ZStack {
-            if vm.showLyrics {
-                ScrollView {
-                    Text(vm.video.description.isEmpty ? "Chưa có lời bài hát cho bản thu này." : vm.video.description)
-                        .font(.ytCaption)
-                        .foregroundColor(.ytPrimaryText)
-                        .multilineTextAlignment(.center)
-                        .padding(Spacing.lg)
-                }
-                .frame(width: 236, height: 236)
-                .background(RoundedRectangle(cornerRadius: 20).fill(Color.ytSurface))
-            } else {
-                AsyncImageView(urlString: vm.video.thumbnailURL, aspectRatio: 1.0)
-                    .frame(width: 236, height: 236)
-                    .cornerRadius(20)
-                    .shadow(color: Color.black.opacity(0.55), radius: 20, x: 0, y: 10)
-                    .scaleEffect(vm.isPlaying ? 1.0 : 0.92)
-                    .animation(.spring(response: 0.45, dampingFraction: 0.78), value: vm.isPlaying)
-            }
-        }
-        .padding(.vertical, Spacing.sm)
+        AsyncImageView(urlString: vm.video.thumbnailURL, aspectRatio: 1.0)
+            .frame(width: 236, height: 236)
+            .cornerRadius(20)
+            .shadow(color: Color.black.opacity(0.55), radius: 20, x: 0, y: 10)
+            .scaleEffect(vm.isPlaying ? 1.0 : 0.92)
+            .animation(.spring(response: 0.45, dampingFraction: 0.78), value: vm.isPlaying)
+            .padding(.vertical, Spacing.sm)
     }
 
     private var musicControlsSection: some View {
@@ -308,30 +407,25 @@ struct PlayerView: View {
                 .buttonStyle(.plain)
             }
 
-            // Volume + "[ 📄 Lời bài hát ]"
+            // Full-width System Volume Slider synced directly with iPhone hardware volume
             HStack(spacing: Spacing.md) {
-                Image(systemName: "speaker.wave.2.fill")
+                Image(systemName: "speaker.fill")
                     .font(.caption)
                     .foregroundColor(.ytSecondaryText)
+                #if canImport(UIKit)
+                iOSSystemVolumeSlider()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 30)
+                #else
                 Slider(value: Binding(
                     get: { vm.volume },
                     set: { vm.setPlayerVolume($0) }
                 ), in: 0...100)
                 .tint(.ytRed)
-
-                Button {
-                    withAnimation { vm.showLyrics.toggle() }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "doc.text")
-                        Text("Lời bài hát")
-                    }
-                    .font(.ytCaption)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(Color.ytSurface))
-                }
-                .buttonStyle(.plain)
+                #endif
+                Image(systemName: "speaker.wave.3.fill")
+                    .font(.caption)
+                    .foregroundColor(.ytSecondaryText)
             }
 
             Spacer(minLength: 0)
@@ -445,8 +539,47 @@ struct PlayerView: View {
             }
         }
     }
+}
 
-    private func playAdjacent(offset: Int) {
-        vm.playAdjacent(offset: offset)
+#if canImport(UIKit)
+// MARK: - Native iOS Hardware Volume Slider (MPVolumeView)
+
+/// Wraps Apple's `MPVolumeView` so dragging the slider directly adjusts iPhone hardware
+/// speaker/AirPods volume, and pressing the physical side volume buttons updates this
+/// slider automatically in real time.
+private struct iOSSystemVolumeSlider: UIViewRepresentable {
+    func makeUIView(context: Context) -> StyledMPVolumeView {
+        let volumeView = StyledMPVolumeView(frame: .zero)
+        volumeView.showsVolumeSlider = true
+        volumeView.backgroundColor = .clear
+        return volumeView
+    }
+
+    func updateUIView(_ uiView: StyledMPVolumeView, context: Context) {
+        uiView.applyTrackStyling()
     }
 }
+
+private final class StyledMPVolumeView: MPVolumeView {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        applyTrackStyling()
+    }
+
+    func applyTrackStyling() {
+        for subview in subviews {
+            if let slider = subview as? UISlider {
+                slider.minimumTrackTintColor = UIColor(Color.ytRed)
+                slider.maximumTrackTintColor = UIColor.white.withAlphaComponent(0.22)
+                var sliderFrame = slider.frame
+                sliderFrame.origin.x = 0
+                sliderFrame.size.width = bounds.width
+                sliderFrame.origin.y = (bounds.height - sliderFrame.height) / 2.0
+                slider.frame = sliderFrame
+            } else {
+                subview.isHidden = true
+            }
+        }
+    }
+}
+#endif

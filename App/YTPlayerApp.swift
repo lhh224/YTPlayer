@@ -16,6 +16,7 @@ struct YTPlayerApp: App {
 
     init() {
         Self.configureAudioSession()
+        ContentFilterService.shared.preload()
         NowPlayingService.shared.configureRemoteCommands()
         PlaybackService.shared.registerSystemObserversIfNeeded()
     }

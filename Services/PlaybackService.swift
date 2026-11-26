@@ -1,8 +1,9 @@
 // PlaybackService.swift
 // YTPlayer
 //
-// Manages playback state, background audio persistence, AVAudioSession interruption
-// recovery, Lock Screen command bridging, and YouTube IFrame embed HTML/JS generation.
+// Manages playback state, background audio persistence (AVAudioSession + silent PCM
+// keep-alive + cross-frame WebKit anti-pause), Lock Screen command bridging, and
+// YouTube IFrame embed HTML/JS generation with automatic mobile autoplay.
 
 import Foundation
 import Combine
@@ -30,6 +31,11 @@ final class PlaybackService: ObservableObject {
         didSet {
             UserDefaults.standard.set(isBackgroundPlaybackEnabled, forKey: Keys.backgroundPlaybackEnabled)
             syncBackgroundFlagToWebView()
+            if !isBackgroundPlaybackEnabled {
+                stopKeepAliveAudio()
+            } else if isPlaying && !isUserPaused {
+                startKeepAliveAudioIfNeeded()
+            }
         }
     }
 
@@ -41,6 +47,13 @@ final class PlaybackService: ObservableObject {
     private var wasPlayingBeforeInterruption: Bool = false
     private var hasRegisteredObservers: Bool = false
     private var cancellables: Set<AnyCancellable> = []
+
+    #if os(iOS)
+    /// Ultra-quiet local PCM keep-alive audio player that holds `AVAudioSession(.playback)`
+    /// across the ~150ms WebKit screen-lock transition gap and track changes so iOS never
+    /// suspends the WebContent process while background playback is active.
+    private var keepAliveAudioPlayer: AVAudioPlayer?
+    #endif
 
     #if canImport(UIKit)
     private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
@@ -54,6 +67,7 @@ final class PlaybackService: ObservableObject {
     var onRemoteNextTrack: (() -> Void)?
     var onRemotePreviousTrack: (() -> Void)?
     var onRemoteSeek: ((TimeInterval) -> Void)?
+    var onSelectVideoFromApp: ((VideoItem, [VideoItem]) -> Void)?
 
     /// Active playback queue used when advancing tracks from Lock Screen or UI.
     var playbackQueue: [VideoItem] = VideoItem.mockItems
@@ -76,15 +90,21 @@ final class PlaybackService: ObservableObject {
         registerSystemObserversIfNeeded()
     }
 
-    // MARK: - Anti-Auto-Pause Visibility Override UserScript
+    // MARK: - Anti-Auto-Pause Visibility & Native Video Guard UserScript
 
-    /// JavaScript injected into both the host document and child YouTube embed iframes
-    /// (`forMainFrameOnly: false`) to prevent Page Visibility detection from pausing audio
-    /// when locking the iPhone screen or moving the app to the background.
+    /// JavaScript injected into BOTH the host document and child YouTube embed iframes
+    /// (`forMainFrameOnly: false`) to:
+    /// 1. Override `document.hidden` (`false`) and `document.visibilityState` (`'visible'`).
+    /// 2. Block `visibilitychange`, `webkitvisibilitychange`, `pagehide`, and `freeze` events.
+    /// 3. Resume the underlying HTML5 `<video>` element inside the YouTube iframe if WebKit
+    ///    involuntarily pauses it during iPhone screen lock / background transition.
     static let visibilityOverrideScript: String = """
     (function() {
         if (window.__ytVisibilityOverrideInstalled) { return; }
         window.__ytVisibilityOverrideInstalled = true;
+
+        window.__ytBgGuardActive = false;
+        window.__ytAllowNativePause = true;
 
         try {
             Object.defineProperty(document, 'hidden', {
@@ -114,7 +134,7 @@ final class PlaybackService: ObservableObject {
             }
         };
 
-        ['visibilitychange', 'webkitvisibilitychange'].forEach(function(evtName) {
+        ['visibilitychange', 'webkitvisibilitychange', 'pagehide', 'freeze'].forEach(function(evtName) {
             window.addEventListener(evtName, stopVisibilityPropagation, true);
             document.addEventListener(evtName, stopVisibilityPropagation, true);
         });
@@ -126,13 +146,47 @@ final class PlaybackService: ObservableObject {
             }
             return origDocAdd.call(this, type, listener, options);
         };
+
+        // Synchronize background guard state between host frame and YouTube embed iframe
+        window.addEventListener('message', function(ev) {
+            if (!ev || !ev.data || typeof ev.data !== 'object') { return; }
+            if (ev.data.__ytSyncGuard === true) {
+                window.__ytBgGuardActive = Boolean(ev.data.bgGuard);
+                window.__ytAllowNativePause = Boolean(ev.data.allowPause);
+                if (ev.data.forcePlay === true && !window.__ytAllowNativePause) {
+                    var vids = document.getElementsByTagName('video');
+                    for (var i = 0; i < vids.length; i++) {
+                        if (vids[i].paused && !vids[i].ended) {
+                            var p = vids[i].play();
+                            if (p && typeof p.catch === 'function') { p.catch(function(){}); }
+                        }
+                    }
+                }
+            }
+        }, true);
+
+        // Catch involuntary WebKit C++ <video> pause inside YouTube iframe on screen lock
+        document.addEventListener('pause', function(ev) {
+            var target = ev && ev.target;
+            if (target && target.tagName === 'VIDEO' &&
+                window.__ytBgGuardActive &&
+                !window.__ytAllowNativePause &&
+                !target.ended) {
+                setTimeout(function() {
+                    if (window.__ytBgGuardActive && !window.__ytAllowNativePause && target.paused && !target.ended) {
+                        var p = target.play();
+                        if (p && typeof p.catch === 'function') { p.catch(function(){}); }
+                    }
+                }, 30);
+            }
+        }, true);
     })();
     """
 
     // MARK: - Public API (HTML & URL Builders)
 
     /// Build a fully self-contained HTML page that loads the YouTube IFrame Player API
-    /// with Page Visibility spoofing and automatic background pause recovery.
+    /// with mobile autoplay trigger, Page Visibility spoofing, and background pause recovery.
     func buildEmbedHTML(videoId: String, autoplay: Bool = false) -> String {
         let autoplayValue = autoplay ? 1 : 0
         let bgEnabledLiteral = isBackgroundPlaybackEnabled ? "true" : "false"
@@ -157,14 +211,37 @@ final class PlaybackService: ObservableObject {
             <script>
                 var player;
                 var progressInterval = null;
+                var shouldAutoplayInitial = (\(autoplayValue) === 1);
                 window.__ytAppInBackground = false;
                 window.__ytBgEnabled = \(bgEnabledLiteral);
                 window.__ytUserPaused = false;
                 window.__ytBgTransitionAt = 0;
+                window.__ytAutoUnmutePending = false;
 
                 function postToNative(payload) {
                     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.ytPlayer) {
                         window.webkit.messageHandlers.ytPlayer.postMessage(JSON.stringify(payload));
+                    }
+                }
+
+                function broadcastGuardToChildIframe(forcePlay) {
+                    var guardActive = Boolean(window.__ytBgEnabled && (window.__ytAppInBackground || (Date.now() - (window.__ytBgTransitionAt || 0) < 4500)));
+                    var allowPause = Boolean(window.__ytUserPaused || !window.__ytBgEnabled);
+                    window.__ytBgGuardActive = guardActive;
+                    window.__ytAllowNativePause = allowPause;
+                    var msg = {
+                        __ytSyncGuard: true,
+                        bgGuard: guardActive,
+                        allowPause: allowPause,
+                        forcePlay: Boolean(forcePlay)
+                    };
+                    var iframes = document.getElementsByTagName('iframe');
+                    for (var i = 0; i < iframes.length; i++) {
+                        try {
+                            if (iframes[i].contentWindow) {
+                                iframes[i].contentWindow.postMessage(msg, '*');
+                            }
+                        } catch (e) {}
                     }
                 }
 
@@ -176,10 +253,35 @@ final class PlaybackService: ObservableObject {
                     if (inBackground) {
                         window.__ytBgTransitionAt = Date.now();
                     }
+                    broadcastGuardToChildIframe(inBackground && !window.__ytUserPaused);
                 };
 
                 window.__ytSetUserPaused = function(paused) {
                     window.__ytUserPaused = Boolean(paused);
+                    broadcastGuardToChildIframe(false);
+                };
+
+                window.__ytTriggerAutoplay = function() {
+                    if (!player || typeof player.playVideo !== 'function' || window.__ytUserPaused) { return; }
+                    try { player.playVideo(); } catch (e) {}
+                    setTimeout(function() {
+                        if (!window.__ytUserPaused && player && typeof player.getPlayerState === 'function') {
+                            var st = player.getPlayerState();
+                            if (st !== YT.PlayerState.PLAYING && st !== YT.PlayerState.BUFFERING) {
+                                player.playVideo();
+                            }
+                        }
+                    }, 320);
+                    setTimeout(function() {
+                        if (!window.__ytUserPaused && player && typeof player.getPlayerState === 'function') {
+                            var st2 = player.getPlayerState();
+                            if (st2 !== YT.PlayerState.PLAYING && st2 !== YT.PlayerState.BUFFERING) {
+                                window.__ytAutoUnmutePending = true;
+                                if (typeof player.mute === 'function') { player.mute(); }
+                                player.playVideo();
+                            }
+                        }
+                    }, 900);
                 };
 
                 var tag = document.createElement('script');
@@ -239,29 +341,36 @@ final class PlaybackService: ObservableObject {
 
                 function onPlayerReady(event) {
                     var dur = (player && typeof player.getDuration === 'function') ? (player.getDuration() || 0) : 0;
+                    broadcastGuardToChildIframe(false);
                     postToNative({
                         event: 'onReady',
                         videoId: '\(videoId)',
                         currentTime: 0,
                         duration: dur
                     });
+                    // Explicitly invoke playVideo() because YouTube mobile IFrame ignores playerVars.autoplay=1
+                    if (shouldAutoplayInitial && !window.__ytUserPaused) {
+                        window.__ytTriggerAutoplay();
+                    }
                 }
 
                 function onPlayerStateChange(event) {
                     var state = event.data;
-                    var recentlyBackgrounded = (Date.now() - (window.__ytBgTransitionAt || 0)) < 4000;
+                    var recentlyBackgrounded = (Date.now() - (window.__ytBgTransitionAt || 0)) < 4500;
 
                     if (state === YT.PlayerState.PAUSED &&
                         window.__ytBgEnabled &&
                         !window.__ytUserPaused &&
                         (window.__ytAppInBackground || recentlyBackgrounded)) {
+                        broadcastGuardToChildIframe(true);
                         if (player && typeof player.playVideo === 'function') {
                             player.playVideo();
                             setTimeout(function() {
                                 if (!window.__ytUserPaused && player && typeof player.getPlayerState === 'function' && player.getPlayerState() !== YT.PlayerState.PLAYING) {
+                                    broadcastGuardToChildIframe(true);
                                     player.playVideo();
                                 }
-                            }, 200);
+                            }, 180);
                         }
                         postToNative({
                             event: 'onBackgroundAutoResume',
@@ -272,6 +381,14 @@ final class PlaybackService: ObservableObject {
 
                     if (state === YT.PlayerState.PLAYING) {
                         window.__ytUserPaused = false;
+                        if (window.__ytAutoUnmutePending) {
+                            window.__ytAutoUnmutePending = false;
+                            if (player && typeof player.unMute === 'function') {
+                                player.unMute();
+                                player.setVolume(100);
+                            }
+                        }
+                        broadcastGuardToChildIframe(false);
                         startProgressTimer();
                     } else if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.ENDED) {
                         stopProgressTimer();
@@ -317,6 +434,7 @@ final class PlaybackService: ObservableObject {
             duration = NowPlayingService.parseDurationSeconds(from: video.duration)
         }
         activateAudioSessionIfNeeded()
+        startKeepAliveAudioIfNeeded()
         NowPlayingService.shared.configureRemoteCommands()
         NowPlayingService.shared.updateNowPlaying(
             video: video,
@@ -329,6 +447,7 @@ final class PlaybackService: ObservableObject {
     func pause(userInitiated: Bool = true) {
         if userInitiated {
             isUserPaused = true
+            stopKeepAliveAudio()
         }
         isPlaying = false
         NowPlayingService.shared.updatePlaybackState(
@@ -344,6 +463,7 @@ final class PlaybackService: ObservableObject {
         currentTime = 0
         duration = 0
         currentVideo = nil
+        stopKeepAliveAudio()
         NowPlayingService.shared.clearNowPlaying()
     }
 
@@ -370,22 +490,23 @@ final class PlaybackService: ObservableObject {
         guard isBackgroundPlaybackEnabled, !isUserPaused else { return false }
         if isAppInBackground { return true }
         if let transitionDate = backgroundTransitionDate,
-           Date().timeIntervalSince(transitionDate) < 4.0 {
+           Date().timeIntervalSince(transitionDate) < 4.5 {
             return true
         }
         return false
     }
 
-    /// Forces the YouTube IFrame player to continue playing if WebKit paused it during screen lock.
+    /// Forces the YouTube IFrame player & child `<video>` to continue playing if WebKit paused it during screen lock.
     func attemptBackgroundAutoResume() {
         guard shouldAutoResumeInBackground else { return }
         activateAudioSessionIfNeeded()
-        jsCommandExecutor?("window.__ytSetUserPaused && window.__ytSetUserPaused(false); if (window.player && typeof player.playVideo === 'function') { player.playVideo(); }")
+        startKeepAliveAudioIfNeeded()
+        jsCommandExecutor?("window.__ytSetUserPaused && window.__ytSetUserPaused(false); window.__ytSetBackgroundState && window.__ytSetBackgroundState(true, true); if (window.player && typeof player.playVideo === 'function') { player.playVideo(); }")
 
-        for delay in [0.18, 0.55] {
+        for delay in [0.15, 0.45, 1.1, 2.2] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let self = self, self.shouldAutoResumeInBackground else { return }
-                self.jsCommandExecutor?("if (window.player && typeof player.getPlayerState === 'function' && player.getPlayerState() !== 1) { player.playVideo(); }")
+                self.jsCommandExecutor?("window.__ytSetBackgroundState && window.__ytSetBackgroundState(true, true); if (window.player && typeof player.getPlayerState === 'function' && player.getPlayerState() !== 1) { player.playVideo(); }")
             }
         }
     }
@@ -395,6 +516,7 @@ final class PlaybackService: ObservableObject {
     func remotePlay() {
         isUserPaused = false
         activateAudioSessionIfNeeded()
+        startKeepAliveAudioIfNeeded()
         jsCommandExecutor?("window.__ytSetUserPaused && window.__ytSetUserPaused(false);")
         if let onRemotePlay = onRemotePlay {
             onRemotePlay()
@@ -408,6 +530,7 @@ final class PlaybackService: ObservableObject {
 
     func remotePause() {
         isUserPaused = true
+        stopKeepAliveAudio()
         jsCommandExecutor?("window.__ytSetUserPaused && window.__ytSetUserPaused(true);")
         if let onRemotePause = onRemotePause {
             onRemotePause()
@@ -454,7 +577,6 @@ final class PlaybackService: ObservableObject {
         guard !hasRegisteredObservers else { return }
         hasRegisteredObservers = true
 
-        // Sleep Timer integration (works both in foreground and while locked)
         NotificationCenter.default
             .publisher(for: Notification.Name("SleepTimerFired"))
             .receive(on: DispatchQueue.main)
@@ -487,6 +609,14 @@ final class PlaybackService: ObservableObject {
                 self?.handleWillEnterForeground()
             }
             .store(in: &cancellables)
+
+        NotificationCenter.default
+            .publisher(for: UIApplication.didBecomeActiveNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.handleDidBecomeActive()
+            }
+            .store(in: &cancellables)
         #endif
 
         #if os(iOS)
@@ -510,6 +640,7 @@ final class PlaybackService: ObservableObject {
             .publisher(for: AVAudioSession.mediaServicesWereResetNotification)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
+                self?.keepAliveAudioPlayer = nil
                 self?.activateAudioSessionIfNeeded()
                 if self?.isPlaying == true && self?.isUserPaused == false {
                     self?.remotePlay()
@@ -519,7 +650,7 @@ final class PlaybackService: ObservableObject {
         #endif
     }
 
-    // MARK: - Private Lifecycle & Audio Session Handlers
+    // MARK: - Private Audio Session & Keep-Alive Engine
 
     private func activateAudioSessionIfNeeded() {
         #if os(iOS)
@@ -533,6 +664,68 @@ final class PlaybackService: ObservableObject {
         #endif
     }
 
+    private func startKeepAliveAudioIfNeeded() {
+        #if os(iOS)
+        guard isBackgroundPlaybackEnabled, !isUserPaused, currentVideo != nil else { return }
+        if keepAliveAudioPlayer == nil {
+            keepAliveAudioPlayer = Self.buildSilentKeepAlivePlayer()
+        }
+        if let player = keepAliveAudioPlayer, !player.isPlaying {
+            player.play()
+        }
+        #endif
+    }
+
+    private func stopKeepAliveAudio() {
+        #if os(iOS)
+        if let player = keepAliveAudioPlayer, player.isPlaying {
+            player.pause()
+        }
+        #endif
+    }
+
+    #if os(iOS)
+    /// Generates a 1-second 8kHz 16-bit mono WAV buffer in memory with +/-2 LSB samples
+    /// so iOS `mediaserverd` maintains continuous background execution for our process
+    /// during WebKit iframe transitions without producing audible noise.
+    private static func buildSilentKeepAlivePlayer() -> AVAudioPlayer? {
+        let sampleRate: UInt32 = 8000
+        let numSamples: UInt32 = sampleRate
+        let dataByteCount: UInt32 = numSamples * 2
+        let riffChunkSize: UInt32 = 36 + dataByteCount
+
+        var data = Data(capacity: Int(44 + dataByteCount))
+        data.append(contentsOf: [0x52, 0x49, 0x46, 0x46]) // "RIFF"
+        withUnsafeBytes(of: riffChunkSize.littleEndian) { data.append(contentsOf: $0) }
+        data.append(contentsOf: [0x57, 0x41, 0x56, 0x45]) // "WAVE"
+        data.append(contentsOf: [0x66, 0x6D, 0x74, 0x20]) // "fmt "
+        withUnsafeBytes(of: UInt32(16).littleEndian) { data.append(contentsOf: $0) }
+        withUnsafeBytes(of: UInt16(1).littleEndian) { data.append(contentsOf: $0) }  // PCM
+        withUnsafeBytes(of: UInt16(1).littleEndian) { data.append(contentsOf: $0) }  // Mono
+        withUnsafeBytes(of: sampleRate.littleEndian) { data.append(contentsOf: $0) }
+        withUnsafeBytes(of: (sampleRate * 2).littleEndian) { data.append(contentsOf: $0) }
+        withUnsafeBytes(of: UInt16(2).littleEndian) { data.append(contentsOf: $0) }  // Block align
+        withUnsafeBytes(of: UInt16(16).littleEndian) { data.append(contentsOf: $0) } // 16-bit
+        data.append(contentsOf: [0x64, 0x61, 0x74, 0x61]) // "data"
+        withUnsafeBytes(of: dataByteCount.littleEndian) { data.append(contentsOf: $0) }
+
+        for i in 0..<Int(numSamples) {
+            let sample: Int16 = (i % 2 == 0) ? 2 : -2
+            withUnsafeBytes(of: sample.littleEndian) { data.append(contentsOf: $0) }
+        }
+
+        do {
+            let player = try AVAudioPlayer(data: data, fileTypeHint: AVFileType.wav.rawValue)
+            player.numberOfLoops = -1
+            player.volume = 0.01
+            player.prepareToPlay()
+            return player
+        } catch {
+            return nil
+        }
+    }
+    #endif
+
     private func syncBackgroundFlagToWebView() {
         let inBgLiteral = isAppInBackground ? "true" : "false"
         let bgEnabledLiteral = isBackgroundPlaybackEnabled ? "true" : "false"
@@ -542,8 +735,9 @@ final class PlaybackService: ObservableObject {
     #if canImport(UIKit)
     private func handleWillEnterBackgroundTransition() {
         backgroundTransitionDate = Date()
-        if isBackgroundPlaybackEnabled && isPlaying && !isUserPaused {
+        if isBackgroundPlaybackEnabled && currentVideo != nil && !isUserPaused {
             activateAudioSessionIfNeeded()
+            startKeepAliveAudioIfNeeded()
             jsCommandExecutor?("if (window.__ytSetBackgroundState) { window.__ytSetBackgroundState(true, true); }")
         }
     }
@@ -562,10 +756,11 @@ final class PlaybackService: ObservableObject {
             return
         }
 
-        guard isPlaying && !isUserPaused else { return }
+        guard !isUserPaused else { return }
 
         beginShortBackgroundTransitionTask()
         activateAudioSessionIfNeeded()
+        startKeepAliveAudioIfNeeded()
         attemptBackgroundAutoResume()
     }
 
@@ -579,12 +774,17 @@ final class PlaybackService: ObservableObject {
         }
     }
 
+    private func handleDidBecomeActive() {
+        isAppInBackground = false
+        syncBackgroundFlagToWebView()
+    }
+
     private func beginShortBackgroundTransitionTask() {
         endBackgroundTransitionTask()
         backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "YTPlayerBackgroundAudioHandoff") { [weak self] in
             self?.endBackgroundTransitionTask()
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8.0) { [weak self] in
             self?.endBackgroundTransitionTask()
         }
     }
@@ -608,6 +808,7 @@ final class PlaybackService: ObservableObject {
         switch type {
         case .began:
             wasPlayingBeforeInterruption = isPlaying && !isUserPaused
+            stopKeepAliveAudio()
             if isPlaying {
                 isPlaying = false
                 NowPlayingService.shared.updatePlaybackState(
@@ -638,7 +839,6 @@ final class PlaybackService: ObservableObject {
             return
         }
 
-        // Standard iOS audio behavior: pause when headphones/AirPods are unplugged
         if reason == .oldDeviceUnavailable && isPlaying {
             remotePause()
         }

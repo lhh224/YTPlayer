@@ -55,8 +55,10 @@ struct YouTubeWebView: UIViewRepresentable {
             }
         }
 
-        Task { @MainActor in
-            await ContentFilterService.shared.apply(to: webView.configuration)
+        if !ContentFilterService.shared.applySynchronouslyIfReady(to: configuration) {
+            Task { @MainActor in
+                await ContentFilterService.shared.apply(to: webView.configuration)
+            }
         }
 
         webView.loadHTMLString(html, baseURL: PlaybackService.embedBaseURL)
@@ -131,8 +133,10 @@ struct YouTubeWebView: NSViewRepresentable {
             }
         }
 
-        Task { @MainActor in
-            await ContentFilterService.shared.apply(to: webView.configuration)
+        if !ContentFilterService.shared.applySynchronouslyIfReady(to: configuration) {
+            Task { @MainActor in
+                await ContentFilterService.shared.apply(to: webView.configuration)
+            }
         }
 
         webView.loadHTMLString(html, baseURL: PlaybackService.embedBaseURL)

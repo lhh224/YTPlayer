@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LibraryView: View {
     @StateObject private var vm = LibraryViewModel()
+    @EnvironmentObject var router: AppRouter
     @EnvironmentObject var libraryRepo: LibraryRepository
 
     @State private var showClearHistoryConfirm = false
@@ -84,9 +85,12 @@ struct LibraryView: View {
             } else {
                 List {
                     ForEach(vm.favoriteItems) { video in
-                        NavigationLink(destination: PlayerView(video: video, queue: vm.favoriteItems)) {
+                        Button {
+                            router.presentPlayer(video: video, queue: vm.favoriteItems)
+                        } label: {
                             LibraryRowView(video: video)
                         }
+                        .buttonStyle(.plain)
                         .listRowInsets(EdgeInsets(top: Spacing.sm, leading: Spacing.md, bottom: Spacing.sm, trailing: Spacing.md))
                     }
                     .onDelete { indexSet in
@@ -111,9 +115,12 @@ struct LibraryView: View {
             } else {
                 List {
                     ForEach(vm.historyItems) { video in
-                        NavigationLink(destination: PlayerView(video: video, queue: vm.historyItems)) {
+                        Button {
+                            router.presentPlayer(video: video, queue: vm.historyItems)
+                        } label: {
                             LibraryRowView(video: video)
                         }
+                        .buttonStyle(.plain)
                         .listRowInsets(EdgeInsets(top: Spacing.sm, leading: Spacing.md, bottom: Spacing.sm, trailing: Spacing.md))
                     }
                     .onDelete { indexSet in
@@ -163,6 +170,7 @@ struct LibraryRowView: View {
 struct LibraryView_Previews: PreviewProvider {
     static var previews: some View {
         LibraryView()
+            .environmentObject(AppRouter())
             .environmentObject(LibraryRepository(context: CoreDataStack.shared.context))
     }
 }
