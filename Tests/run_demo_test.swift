@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import MediaPlayer
 
 @main
 struct DemoTestSuite {
@@ -84,6 +85,26 @@ struct DemoTestSuite {
 
         let htmlAutoplay = playback.buildEmbedHTML(videoId: "dQw4w9WgXcQ", autoplay: true)
         assertTest(htmlAutoplay.contains("'autoplay': 1"), "Cấu hình Autoplay bật khi autoplay=true")
+        assertTest(htmlAutoplay.contains("Object.defineProperty(document, 'hidden'") && htmlAutoplay.contains("return false"), "Ghi đè document.hidden luôn trả về false")
+        assertTest(htmlAutoplay.contains("Object.defineProperty(document, 'visibilityState'") && htmlAutoplay.contains("return 'visible'"), "Ghi đè document.visibilityState luôn trả về 'visible'")
+        assertTest(htmlAutoplay.contains("stopImmediatePropagation"), "Chặn lan truyền sự kiện visibilitychange bằng stopImmediatePropagation()")
+        assertTest(htmlAutoplay.contains("state === YT.PlayerState.PAUSED") && htmlAutoplay.contains("player.playVideo()"), "Tự động gọi lại player.playVideo() khi bị auto-pause trong nền")
+
+        // Kiểm thử NowPlayingService & đồng bộ Lock Screen / SleepTimer
+        assertTest(NowPlayingService.parseDurationSeconds(from: "4:15") == 255, "Chuyển đổi thời lượng 4:15 -> 255s cho Lock Screen")
+        assertTest(NowPlayingService.parseDurationSeconds(from: "1:02:05") == 3725, "Chuyển đổi thời lượng 1:02:05 -> 3725s cho Lock Screen")
+        assertTest(NowPlayingService.parseDurationSeconds(from: "LIVE") == 0, "Xử lý livestream LIVE -> 0s")
+
+        playback.play(video: first)
+        assertTest(playback.isPlaying && playback.currentVideo?.id == first.id, "PlaybackService kích hoạt trạng thái đang phát")
+        let npTitle = MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyTitle] as? String
+        let npArtist = MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtist] as? String
+        assertTest(npTitle == first.title && npArtist == first.channelName, "MPNowPlayingInfoCenter cập nhật tên bài hát & kênh lên Lock Screen")
+
+        NotificationCenter.default.post(name: Notification.Name("SleepTimerFired"), object: nil)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        assertTest(!playback.isPlaying && playback.isUserPaused, "SleepTimerFired tự động tạm dừng PlaybackService và đánh dấu userPaused")
+        playback.stop()
 
         // ---------------------------------------------------------
         // NHÓM 4: KIỂM THỬ HẸN GIỜ TẮT (SLEEP TIMER SERVICE)

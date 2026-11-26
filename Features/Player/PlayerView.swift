@@ -13,12 +13,13 @@ struct PlayerView: View {
     @State private var showPlaylistSheet = false
     @State private var newPlaylistName = ""
 
-    init(video: VideoItem) {
+    init(video: VideoItem, queue: [VideoItem] = []) {
         self.video = video
         _vm = StateObject(
             wrappedValue: PlayerViewModel(
                 video: video,
-                libraryRepo: LibraryRepository(context: CoreDataStack.shared.context)
+                libraryRepo: LibraryRepository(context: CoreDataStack.shared.context),
+                queue: queue
             )
         )
     }
@@ -46,7 +47,7 @@ struct PlayerView: View {
                             vm.handleJSMessage(message)
                         },
                         commandHandler: { executeJS in
-                            vm.sendJSCommand = executeJS
+                            vm.registerJSBridge(executeJS)
                         }
                     )
                     .aspectRatio(16 / 9, contentMode: .fit)
@@ -124,6 +125,7 @@ struct PlayerView: View {
                     .buttonStyle(.plain)
 
                     Button {
+                        vm.stopAndClosePlayer()
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
@@ -265,7 +267,7 @@ struct PlayerView: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    playAdjacent(offset: -1)
+                    vm.playPreviousTrack()
                 } label: {
                     Image(systemName: "backward.end.fill")
                         .font(.title3)
@@ -289,7 +291,7 @@ struct PlayerView: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    playAdjacent(offset: 1)
+                    vm.playNextTrack()
                 } label: {
                     Image(systemName: "forward.end.fill")
                         .font(.title3)
@@ -382,7 +384,10 @@ struct PlayerView: View {
     // MARK: - Sheets
 
     private var upNextSheetView: some View {
-        List(VideoItem.mockItems.filter { $0.id != vm.video.id }) { item in
+        let queueSource = PlaybackService.shared.playbackQueue.isEmpty
+            ? VideoItem.mockItems
+            : PlaybackService.shared.playbackQueue
+        return List(queueSource.filter { $0.id != vm.video.id }) { item in
             Button {
                 vm.switchTrack(to: item)
                 showUpNextSheet = false
@@ -442,13 +447,6 @@ struct PlayerView: View {
     }
 
     private func playAdjacent(offset: Int) {
-        let pool = VideoItem.mockItems
-        guard !pool.isEmpty else { return }
-        if let idx = pool.firstIndex(where: { $0.id == vm.video.id }) {
-            let nextIdx = (idx + offset + pool.count) % pool.count
-            vm.switchTrack(to: pool[nextIdx])
-        } else {
-            vm.switchTrack(to: pool[0])
-        }
+        vm.playAdjacent(offset: offset)
     }
 }

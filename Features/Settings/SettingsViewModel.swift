@@ -10,6 +10,7 @@ import Combine
 final class SettingsViewModel: ObservableObject {
     enum Keys {
         static let isDarkMode = "isDarkMode"
+        static let backgroundPlaybackEnabled = "backgroundPlaybackEnabled"
         static let contentFilterEnabled = "contentFilterEnabled"
         static let sleepTimerMinutes = "sleepTimerMinutes"
     }
@@ -24,6 +25,13 @@ final class SettingsViewModel: ObservableObject {
     @Published var isDarkMode: Bool {
         didSet {
             UserDefaults.standard.set(isDarkMode, forKey: Keys.isDarkMode)
+        }
+    }
+
+    @Published var backgroundPlaybackEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(backgroundPlaybackEnabled, forKey: Keys.backgroundPlaybackEnabled)
+            PlaybackService.shared.isBackgroundPlaybackEnabled = backgroundPlaybackEnabled
         }
     }
 
@@ -55,6 +63,7 @@ final class SettingsViewModel: ObservableObject {
         } else {
             self.isDarkMode = UserDefaults.standard.bool(forKey: Keys.isDarkMode)
         }
+        self.backgroundPlaybackEnabled = PlaybackService.shared.isBackgroundPlaybackEnabled
         self.contentFilterEnabled = UserDefaults.standard.object(forKey: Keys.contentFilterEnabled) as? Bool ?? true
         self.sleepTimerMinutes = UserDefaults.standard.object(forKey: Keys.sleepTimerMinutes) as? Int ?? 30
         self.apiKeyInput = YouTubeAPIService.shared.currentAPIKey
@@ -87,6 +96,7 @@ final class SettingsViewModel: ObservableObject {
 
     func resetSettings() {
         isDarkMode = true
+        backgroundPlaybackEnabled = true
         contentFilterEnabled = true
         sleepTimerMinutes = 30
     }

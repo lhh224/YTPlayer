@@ -79,3 +79,23 @@
 - **Vấn đề 1:** Khi mở Control Center sau khi thoát WebClip trên iPhone bị báo `"Không phát"` do trang chính không giữ `AVAudioSession` trực tiếp (chỉ có iframe chéo miền).
   - **Cách xử lý:** Bổ sung bộ tạo luồng âm thanh giữ phiên (`keepAliveAudio` PCM WAV siêu nhỏ chạy ở frame chính khi bật *Phát trong nền*) kết hợp `navigator.mediaSession.setPositionState` và tự kích hoạt lại `playVideo()` khi hệ thống vừa ẩn trang. *(Lưu ý giới hạn WebKit iOS: Safari/WebClip vẫn có thể tạm ngưng giải mã thẻ `<video>` bên trong iframe YouTube chéo miền khi tắt màn hình tùy phiên bản iOS).*
 - **Vấn đề 2:** Cập nhật toàn bộ màn hình Cài đặt `v2.1.0` (Phát trong nền, Chế độ mở mặc định Music/Video, Tự động phát tiếp theo, Chất lượng phát, Hẹn giờ 15p/30p/45p/60p, Giao diện tối, Đo & xóa bộ nhớ đệm thực tế) và cơ chế `no-cache` revalidate trong `sw.js` để Profile App trên iPhone nhận ngay bản mới.
+
+---
+
+## Giai đoạn 10 — Phát nhạc trong nền Native iOS (2026-11-25)
+
+### [BG-001] Luồng phát YouTube IFrame trong `WKWebView` tự động tạm dừng khi khóa màn hình iPhone 13 hoặc đưa app xuống nền
+- **Ngày phát hiện:** 2026-11-25
+- **Mức độ:** Critical
+- **Nguyên nhân:**
+  1. `Resources/Info.plist` thiếu `UIBackgroundModes = [audio]` và `YTPlayer.xcodeproj` bật `GENERATE_INFOPLIST_FILE = YES` mà chưa trỏ `INFOPLIST_FILE = Resources/Info.plist` cũng như chưa bật capability `BackgroundModes`.
+  2. `YTPlayerApp.swift` chưa cấu hình `AVAudioSession.sharedInstance().setCategory(.playback)` và chưa lắng nghe `AVAudioSession.interruptionNotification` / `routeChangeNotification`.
+  3. Khi khóa màn hình hoặc thoát ra nền, WebKit phát sự kiện `visibilitychange` và đặt `document.hidden = true` vào cả trang chủ lẫn iframe con của YouTube khiến IFrame API tự gọi pause; ngoài ra khi đổi bài từ nền, `embedHTML` thay đổi làm `WKWebView.loadHTMLString` tải lại toàn trang gây mất phiên media đã cấp quyền.
+  4. Chưa tích hợp `MPNowPlayingInfoCenter` và `MPRemoteCommandCenter` để hiển thị metadata và điều khiển từ Lock Screen / Control Center.
+- **Cách sửa:**
+  1. Bổ sung `UIBackgroundModes` (`audio`) vào `Resources/Info.plist` và liên kết `INFOPLIST_FILE = Resources/Info.plist` + `com.apple.BackgroundModes` trong `YTPlayer.xcodeproj/project.pbxproj`.
+  2. Kích hoạt `AVAudioSession` (`.playback`, `.default`) ngay khi khởi chạy trong `YTPlayerApp.swift` và xử lý khôi phục tự động sau cuộc gọi/thông báo (`AVAudioSession.interruptionNotification`) hoặc rút tai nghe (`routeChangeNotification`) trong `PlaybackService.swift`.
+  3. Bổ sung `PlaybackService.visibilityOverrideScript` (inject qua cả `WKUserScript(..., injectionTime: .atDocumentStart, forMainFrameOnly: false)` trong `YouTubeWebView.swift` lẫn inline trong `buildEmbedHTML`) để ghi đè `document.hidden = false`, `document.visibilityState = 'visible'`, chặn `visibilitychange` bằng `stopImmediatePropagation()`, và tự gọi lại `player.playVideo()` nếu bị hệ thống auto-pause khi chuyển vào background (`UIApplication.didEnterBackgroundNotification`). Giữ ổn định `embedHTML` khi chuyển bài bằng `loadVideoById`.
+  4. Tạo `Services/NowPlayingService.swift` tích hợp `MPNowPlayingInfoCenter` (tiêu đề, tên kênh, thời lượng, tiến độ, ảnh thumbnail bất đồng bộ có cache) và `MPRemoteCommandCenter` (Play, Pause, Toggle, Next, Previous, Seek) đồng bộ hai chiều với `PlaybackService`, `PlayerViewModel` và `SleepTimerService`.
+- **Kiểm thử:** Chạy `./test.sh` đạt 40/40 file Swift typecheck 0 lỗi và toàn bộ unit test đạt 100%; kiểm tra `plutil -lint` hợp lệ cho `Resources/Info.plist` và `YTPlayer.xcodeproj/project.pbxproj`.
+- **Trạng thái:** 🟢 Fixed

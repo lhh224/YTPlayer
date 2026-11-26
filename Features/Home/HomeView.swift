@@ -23,7 +23,7 @@ struct HomeView: View {
                             )
 
                             ForEach(vm.videos) { video in
-                                NavigationLink(destination: PlayerView(video: video)) {
+                                NavigationLink(destination: PlayerView(video: video, queue: vm.videos)) {
                                     VideoCardView(video: video)
                                 }
                                 .buttonStyle(.plain)

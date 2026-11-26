@@ -1,7 +1,8 @@
 // SleepTimerService.swift
 // YTPlayer
 //
-// Manages a countdown sleep timer that fires a notification when it reaches zero.
+// Manages a countdown sleep timer that fires a notification when it reaches zero,
+// remaining accurate across background audio execution using absolute target timestamps.
 
 import Foundation
 import Combine
@@ -17,6 +18,7 @@ final class SleepTimerService: ObservableObject {
     // MARK: - Private
 
     private var timer: Timer?
+    private var targetEndDate: Date?
 
     // MARK: - Singleton
 
@@ -41,8 +43,10 @@ final class SleepTimerService: ObservableObject {
     func start(minutes: Int) {
         cancel()
 
+        let totalSeconds = max(1, minutes * 60)
         selectedMinutes = minutes
-        remainingSeconds = minutes * 60
+        remainingSeconds = totalSeconds
+        targetEndDate = Date().addingTimeInterval(TimeInterval(totalSeconds))
         isActive = true
 
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
@@ -50,7 +54,7 @@ final class SleepTimerService: ObservableObject {
             self.tick()
         }
 
-        // Ensure the timer fires even when the run loop is in common modes (e.g., scrolling)
+        // Ensure the timer fires even when the run loop is in common modes or background audio session
         if let timer = timer {
             RunLoop.main.add(timer, forMode: .common)
         }
@@ -60,6 +64,7 @@ final class SleepTimerService: ObservableObject {
     func cancel() {
         timer?.invalidate()
         timer = nil
+        targetEndDate = nil
         isActive = false
         remainingSeconds = 0
     }
@@ -72,7 +77,14 @@ final class SleepTimerService: ObservableObject {
             return
         }
 
-        if remainingSeconds > 0 {
+        if let endDate = targetEndDate {
+            let secondsLeft = Int(ceil(endDate.timeIntervalSinceNow))
+            if secondsLeft > 0 {
+                remainingSeconds = secondsLeft
+            } else {
+                fireTimer()
+            }
+        } else if remainingSeconds > 0 {
             remainingSeconds -= 1
         } else {
             fireTimer()

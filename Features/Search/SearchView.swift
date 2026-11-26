@@ -127,7 +127,7 @@ struct SearchView: View {
             }
 
             ForEach(videos) { video in
-                NavigationLink(destination: PlayerView(video: video)) {
+                NavigationLink(destination: PlayerView(video: video, queue: videos)) {
                     SearchResultRow(video: video)
                 }
                 .listRowInsets(EdgeInsets(top: Spacing.sm, leading: Spacing.md, bottom: Spacing.sm, trailing: Spacing.md))

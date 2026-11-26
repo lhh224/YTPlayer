@@ -5,9 +5,12 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-ipa:
-    name: Build Unsigned YTPlayer.ipa for Sideloadly / AltStore
+    name: Build Unsigned YTPlayer.ipa for ESign / Sideloadly / AltStore
     runs-on: macos-latest
     steps:
       - name: Checkout repository
@@ -32,8 +35,10 @@ jobs:
             cp Config/APIKeys.plist.example Config/APIKeys.plist
           fi
 
-      - name: Show Xcode version
-        run: xcodebuild -version
+      - name: Validate Info.plist & Xcode Project
+        run: |
+          plutil -lint Resources/Info.plist YTPlayer.xcodeproj/project.pbxproj
+          xcodebuild -version
 
       - name: Build YTPlayer.app (Release - iphoneos, Unsigned)
         run: |
@@ -49,10 +54,17 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Package YTPlayer.ipa
+      - name: Package & Verify YTPlayer.ipa
         run: |
-          APP_PATH=$(find build/DerivedData/Build/Products/Release-iphoneos -name "YTPlayer.app" -maxdepth 1 | head -n 1)
+          APP_PATH=$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name "YTPlayer.app" -print -quit)
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+            echo "YTPlayer.app not found!"
+            exit 1
+          fi
           echo "Found app bundle: $APP_PATH"
+          xattr -cr "$APP_PATH" || true
+          find "$APP_PATH" -name ".DS_Store" -delete || true
+          plutil -p "$APP_PATH/Info.plist" | grep -A 3 "UIBackgroundModes"
           mkdir -p build/Payload
           cp -R "$APP_PATH" build/Payload/YTPlayer.app
           cd build
@@ -65,3 +77,15 @@ jobs:
           name: YTPlayer-iOS-IPA
           path: build/YTPlayer.ipa
           if-no-files-found: error
+
+      - name: Publish Latest IPA Release Asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view latest-ipa >/dev/null 2>&1; then
+            gh release upload latest-ipa build/YTPlayer.ipa --clobber
+          else
+            gh release create latest-ipa build/YTPlayer.ipa \
+              --title "YTPlayer iOS IPA (Latest Build)" \
+              --notes "Unsigned YTPlayer.ipa ready for ESign, Sideloadly, AltStore, or TrollStore."
+          fi

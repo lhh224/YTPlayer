@@ -3,7 +3,9 @@
 ## 1. Giới hạn Trình phát nhúng (YouTube Embedded Player)
 
 - **Quảng cáo:** Ứng dụng sử dụng YouTube IFrame API chính thức. Mọi quảng cáo được YouTube phân phối bên trong video hoàn toàn do YouTube kiểm soát và hiển thị. Ứng dụng không can thiệp, không trích xuất video để vượt quảng cáo nhằm tuân thủ tuyệt đối Điều khoản Dịch vụ của YouTube (YouTube ToS).
-- **Phát nền (Background Audio) & Picture-in-Picture (PiP):** Trình phát web nhúng trong WKWebView có các hạn chế phát nền tùy theo phiên bản iOS và chính sách của YouTube. Ứng dụng không sử dụng kỹ thuật trích xuất audio lén để giả lập phát nền trái phép.
+- **Phát nền (Background Audio) & Điều khiển Màn hình khóa:**
+  - Trên **bản iOS Native (`YTPlayer.xcodeproj` / `.ipa`)**: Đã cấu hình đầy đủ `UIBackgroundModes` (`audio`), `AVAudioSession` (`.playback`), `WKUserScript` chống tạm dừng theo `visibilitychange` trên cả trang chính lẫn iframe nhúng, tự động khôi phục khi chuyển xuống nền và đồng bộ `MPNowPlayingInfoCenter` / `MPRemoteCommandCenter` lên Lock Screen & Control Center. Ứng dụng vẫn sử dụng trình phát nhúng chính thức của YouTube (không trích xuất hay bóc tách luồng stream thô trái phép). Lưu ý: trên một số phiên bản iOS mới hoặc chính sách cập nhật phía máy chủ YouTube, WebKit vẫn có thể áp đặt giới hạn giải mã video trong nền nếu bộ nhớ hệ thống bị thu hồi mạnh.
+  - Trên **bản Web / WebClip (`.mobileconfig`)**: Chạy trong sandbox Safari nên chịu giới hạn chung của iOS WebKit đối với iframe chéo miền (cần bật Picture-in-Picture hoặc cài bản `.ipa` Native để phát nền ổn định khi khóa màn hình).
 - **Tải ngoại tuyến (Offline Download):** YouTube Data API v3 và IFrame API không hỗ trợ tải video về lưu trữ cục bộ. Tính năng này không nằm trong phạm vi dự án.
 
 ## 2. Giới hạn Quota YouTube Data API v3

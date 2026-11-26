@@ -84,7 +84,7 @@ struct LibraryView: View {
             } else {
                 List {
                     ForEach(vm.favoriteItems) { video in
-                        NavigationLink(destination: PlayerView(video: video)) {
+                        NavigationLink(destination: PlayerView(video: video, queue: vm.favoriteItems)) {
                             LibraryRowView(video: video)
                         }
                         .listRowInsets(EdgeInsets(top: Spacing.sm, leading: Spacing.md, bottom: Spacing.sm, trailing: Spacing.md))
@@ -111,7 +111,7 @@ struct LibraryView: View {
             } else {
                 List {
                     ForEach(vm.historyItems) { video in
-                        NavigationLink(destination: PlayerView(video: video)) {
+                        NavigationLink(destination: PlayerView(video: video, queue: vm.historyItems)) {
                             LibraryRowView(video: video)
                         }
                         .listRowInsets(EdgeInsets(top: Spacing.sm, leading: Spacing.md, bottom: Spacing.sm, trailing: Spacing.md))

@@ -21,13 +21,14 @@ final class ContentFilterService: ObservableObject {
     }
     
     // JSON content blocking rules (WKContentRuleList format)
-    // Note: Chỉ chặn tracking domains thông thường, không chặn các domain YouTube media cần thiết
+    // Lưu ý: Không chặn doubleclick hay googleads vì YouTube IFrame Player bắt buộc phải tải
+    // script kiểm tra instream/ad_status.js (nếu chặn sẽ gây ra mã lỗi YouTube 152-4).
     private var rulesJSON: String {
         """
         [
             {
                 "trigger": {
-                    "url-filter": ".*(googletagmanager|google-analytics|doubleclick|scorecardresearch)\\\\.com/.*"
+                    "url-filter": ".*(scorecardresearch|quantserve|outbrain|taboola)\\\\.com/.*"
                 },
                 "action": {
                     "type": "block"
@@ -36,7 +37,7 @@ final class ContentFilterService: ObservableObject {
             {
                 "trigger": {
                     "url-filter": ".*",
-                    "if-domain": ["*youtube.com", "*googlevideo.com", "*ytimg.com"]
+                    "if-domain": ["*youtube.com", "*googlevideo.com", "*ytimg.com", "*doubleclick.net", "*google.com"]
                 },
                 "action": {
                     "type": "ignore-previous-rules"

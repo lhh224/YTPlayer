@@ -66,6 +66,14 @@ struct SettingsView: View {
                     }
                 }
 
+                // MARK: - Phát trong nền
+                Section(
+                    header: Text("Phát nhạc & Video"),
+                    footer: Text("Duy trì phát âm thanh qua AVAudioSession và điều khiển từ Màn hình khóa (Lock Screen) hoặc Control Center khi tắt màn hình iPhone.")
+                ) {
+                    Toggle("Phát nhạc trong nền (Background Audio)", isOn: $vm.backgroundPlaybackEnabled)
+                }
+
                 // MARK: - Giao diện
                 Section(header: Text("Giao diện")) {
                     Toggle("Chế độ tối (Dark Mode)", isOn: $vm.isDarkMode)

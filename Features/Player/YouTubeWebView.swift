@@ -19,8 +19,18 @@ struct YouTubeWebView: UIViewRepresentable {
         let configuration = WKWebViewConfiguration()
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
+        configuration.allowsAirPlayForMediaPlayback = true
+        configuration.allowsPictureInPictureMediaPlayback = true
 
         let userContentController = WKUserContentController()
+
+        // Inject Page Visibility override into BOTH main frame and nested YouTube embed iframe
+        let visibilityUserScript = WKUserScript(
+            source: PlaybackService.visibilityOverrideScript,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        userContentController.addUserScript(visibilityUserScript)
         userContentController.add(context.coordinator, name: "ytPlayer")
         configuration.userContentController = userContentController
 
@@ -28,19 +38,28 @@ struct YouTubeWebView: UIViewRepresentable {
         webView.scrollView.isScrollEnabled = false
         webView.isOpaque = false
         webView.backgroundColor = .black
+        #if os(iOS)
+        webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
+        #endif
 
         context.coordinator.webView = webView
         context.coordinator.loadedHTML = html
 
         commandHandler? { [weak webView] js in
-            webView?.evaluateJavaScript(js, completionHandler: nil)
+            if Thread.isMainThread {
+                webView?.evaluateJavaScript(js, completionHandler: nil)
+            } else {
+                DispatchQueue.main.async {
+                    webView?.evaluateJavaScript(js, completionHandler: nil)
+                }
+            }
         }
 
         Task { @MainActor in
             await ContentFilterService.shared.apply(to: webView.configuration)
         }
 
-        webView.loadHTMLString(html, baseURL: URL(string: "https://www.youtube.com"))
+        webView.loadHTMLString(html, baseURL: PlaybackService.embedBaseURL)
         return webView
     }
 
@@ -48,7 +67,7 @@ struct YouTubeWebView: UIViewRepresentable {
         context.coordinator.parent = self
         if context.coordinator.loadedHTML != html {
             context.coordinator.loadedHTML = html
-            uiView.loadHTMLString(html, baseURL: URL(string: "https://www.youtube.com"))
+            uiView.loadHTMLString(html, baseURL: PlaybackService.embedBaseURL)
         }
     }
 
@@ -86,8 +105,15 @@ struct YouTubeWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.mediaTypesRequiringUserActionForPlayback = []
+        configuration.allowsAirPlayForMediaPlayback = true
 
         let userContentController = WKUserContentController()
+        let visibilityUserScript = WKUserScript(
+            source: PlaybackService.visibilityOverrideScript,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        userContentController.addUserScript(visibilityUserScript)
         userContentController.add(context.coordinator, name: "ytPlayer")
         configuration.userContentController = userContentController
 
@@ -96,14 +122,20 @@ struct YouTubeWebView: NSViewRepresentable {
         context.coordinator.loadedHTML = html
 
         commandHandler? { [weak webView] js in
-            webView?.evaluateJavaScript(js, completionHandler: nil)
+            if Thread.isMainThread {
+                webView?.evaluateJavaScript(js, completionHandler: nil)
+            } else {
+                DispatchQueue.main.async {
+                    webView?.evaluateJavaScript(js, completionHandler: nil)
+                }
+            }
         }
 
         Task { @MainActor in
             await ContentFilterService.shared.apply(to: webView.configuration)
         }
 
-        webView.loadHTMLString(html, baseURL: URL(string: "https://www.youtube.com"))
+        webView.loadHTMLString(html, baseURL: PlaybackService.embedBaseURL)
         return webView
     }
 
@@ -111,7 +143,7 @@ struct YouTubeWebView: NSViewRepresentable {
         context.coordinator.parent = self
         if context.coordinator.loadedHTML != html {
             context.coordinator.loadedHTML = html
-            nsView.loadHTMLString(html, baseURL: URL(string: "https://www.youtube.com"))
+            nsView.loadHTMLString(html, baseURL: PlaybackService.embedBaseURL)
         }
     }
 

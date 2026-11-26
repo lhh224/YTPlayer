@@ -36,20 +36,33 @@ final class PlayerViewModel: ObservableObject {
         playerState == .playing || playerState == .loading
     }
 
+    private let initialVideoId: String
+    private var isPlayerReady: Bool = false
     private var libraryRepo: LibraryRepository
     private var cancellables: Set<AnyCancellable> = []
 
-    var sendJSCommand: ((String) -> Void)?
-
-    var embedHTML: String {
-        PlaybackService.shared.buildEmbedHTML(videoId: video.id, autoplay: true)
+    var sendJSCommand: ((String) -> Void)? {
+        didSet {
+            PlaybackService.shared.jsCommandExecutor = sendJSCommand
+        }
     }
 
-    init(video: VideoItem, libraryRepo: LibraryRepository) {
+    /// Stable HTML string keyed to initial video ID so switching tracks via `loadVideoById`
+    /// (including from Lock Screen while backgrounded) preserves the active `YT.Player` session.
+    let embedHTML: String
+
+    init(video: VideoItem, libraryRepo: LibraryRepository, queue: [VideoItem] = []) {
         self.video = video
+        self.initialVideoId = video.id
         self.libraryRepo = libraryRepo
         self.isFavorite = libraryRepo.isFavorite(videoId: video.id)
+        self.embedHTML = PlaybackService.shared.buildEmbedHTML(videoId: video.id, autoplay: true)
 
+        if !queue.isEmpty {
+            PlaybackService.shared.updateQueue(queue)
+        }
+        PlaybackService.shared.play(video: video)
+        bindRemoteCommands()
         observeSleepTimer()
     }
 
@@ -58,36 +71,105 @@ final class PlayerViewModel: ObservableObject {
         self.isFavorite = repo.isFavorite(videoId: video.id)
     }
 
+    func registerJSBridge(_ executor: @escaping (String) -> Void) {
+        self.sendJSCommand = executor
+        bindRemoteCommands()
+    }
+
+    private func bindRemoteCommands() {
+        PlaybackService.shared.onRemotePlay = { [weak self] in
+            Task { @MainActor in
+                self?.playPlayer()
+            }
+        }
+        PlaybackService.shared.onRemotePause = { [weak self] in
+            Task { @MainActor in
+                self?.pausePlayer(userInitiated: true)
+            }
+        }
+        PlaybackService.shared.onRemoteNextTrack = { [weak self] in
+            Task { @MainActor in
+                self?.playNextTrack()
+            }
+        }
+        PlaybackService.shared.onRemotePreviousTrack = { [weak self] in
+            Task { @MainActor in
+                self?.playPreviousTrack()
+            }
+        }
+        PlaybackService.shared.onRemoteSeek = { [weak self] seconds in
+            Task { @MainActor in
+                self?.seekTo(seconds: seconds)
+            }
+        }
+    }
+
     func handleJSMessage(_ message: String) {
         guard let data = message.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let event = json["event"] as? String else { return }
 
+        let currentTime = (json["currentTime"] as? Double) ?? PlaybackService.shared.currentTime
+        let duration = (json["duration"] as? Double) ?? PlaybackService.shared.duration
+
         switch event {
         case "onReady":
+            isPlayerReady = true
             playerState = .playing
+            PlaybackService.shared.play(video: video)
+            if duration > 0 {
+                PlaybackService.shared.updateProgress(currentTime: currentTime, duration: duration)
+            }
+
+        case "onTimeUpdate":
+            PlaybackService.shared.updateProgress(currentTime: currentTime, duration: duration)
+
+        case "onBackgroundAutoResume":
+            // JS intercepted an involuntary background pause; ensure native session stays active
+            playerState = .playing
+            PlaybackService.shared.attemptBackgroundAutoResume()
 
         case "onStateChange":
             let stateCode = (json["data"] as? Int) ?? (json["state"] as? Int)
             guard let code = stateCode else { return }
             switch code {
-            case -1: playerState = .idle
+            case -1:
+                playerState = .idle
+
             case 0:
                 if isRepeat {
                     restartVideo()
+                } else if PlaybackService.shared.playbackQueue.count > 1 {
+                    playNextTrack()
                 } else {
                     playerState = .ended
-                    PlaybackService.shared.pause()
+                    PlaybackService.shared.pause(userInitiated: false)
                 }
+
             case 1:
                 playerState = .playing
                 PlaybackService.shared.play(video: video)
+                PlaybackService.shared.updateProgress(currentTime: currentTime, duration: duration)
+
             case 2:
-                playerState = .paused
-                PlaybackService.shared.pause()
-            case 3: playerState = .loading
-            case 5: playerState = .idle
-            default: break
+                // Guard against involuntary WebKit/YouTube pause right as iPhone enters background
+                if PlaybackService.shared.shouldAutoResumeInBackground {
+                    playerState = .playing
+                    PlaybackService.shared.attemptBackgroundAutoResume()
+                } else {
+                    playerState = .paused
+                    PlaybackService.shared.pause(userInitiated: true)
+                    PlaybackService.shared.updateProgress(currentTime: currentTime, duration: duration)
+                }
+
+            case 3:
+                playerState = .loading
+
+            case 5:
+                playerState = .idle
+
+            default:
+                break
             }
 
         case "onError":
@@ -102,7 +184,7 @@ final class PlayerViewModel: ObservableObject {
 
     func togglePlayPause() {
         if playerState == .playing {
-            pausePlayer()
+            pausePlayer(userInitiated: true)
         } else {
             playPlayer()
         }
@@ -111,18 +193,32 @@ final class PlayerViewModel: ObservableObject {
     func playPlayer() {
         playerState = .playing
         PlaybackService.shared.play(video: video)
-        sendJSCommand?("if (window.player && typeof player.playVideo === 'function') { player.playVideo(); }")
+        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(false); if (window.player && typeof player.playVideo === 'function') { player.playVideo(); }")
     }
 
-    func pausePlayer() {
+    func pausePlayer(userInitiated: Bool = true) {
         playerState = .paused
-        PlaybackService.shared.pause()
-        sendJSCommand?("if (window.player && typeof player.pauseVideo === 'function') { player.pauseVideo(); }")
+        PlaybackService.shared.pause(userInitiated: userInitiated)
+        let pausedFlag = userInitiated ? "true" : "false"
+        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(\(pausedFlag)); if (window.player && typeof player.pauseVideo === 'function') { player.pauseVideo(); }")
+    }
+
+    func stopAndClosePlayer() {
+        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(true); if (window.player && typeof player.stopVideo === 'function') { player.stopVideo(); }")
+        playerState = .idle
+        PlaybackService.shared.stop()
     }
 
     func restartVideo() {
-        sendJSCommand?("if (window.player && typeof player.seekTo === 'function') { player.seekTo(0, true); player.playVideo(); }")
         playerState = .playing
+        PlaybackService.shared.play(video: video)
+        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(false); if (window.player && typeof player.seekTo === 'function') { player.seekTo(0, true); player.playVideo(); }")
+    }
+
+    func seekTo(seconds: TimeInterval) {
+        let clamped = max(0, seconds)
+        sendJSCommand?("if (window.player && typeof player.seekTo === 'function') { player.seekTo(\(clamped), true); }")
+        PlaybackService.shared.updateProgress(currentTime: clamped, duration: PlaybackService.shared.duration)
     }
 
     func setPlayerVolume(_ newVolume: Double) {
@@ -134,8 +230,47 @@ final class PlayerViewModel: ObservableObject {
     func switchTrack(to nextVideo: VideoItem) {
         video = nextVideo
         isFavorite = libraryRepo.isFavorite(videoId: nextVideo.id)
+        playerState = .loading
         addToHistory()
-        sendJSCommand?("if (window.player && typeof player.loadVideoById === 'function') { player.loadVideoById('\(nextVideo.id)'); }")
+        PlaybackService.shared.play(video: nextVideo)
+        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(false); if (window.player && typeof player.loadVideoById === 'function') { player.loadVideoById('\(nextVideo.id)'); }")
+        Task {
+            await loadFullDetailsIfNeeded()
+        }
+    }
+
+    func playNextTrack() {
+        playAdjacent(offset: 1)
+    }
+
+    func playPreviousTrack() {
+        if PlaybackService.shared.currentTime > 5 {
+            restartVideo()
+            return
+        }
+        playAdjacent(offset: -1)
+    }
+
+    func playAdjacent(offset: Int) {
+        let pool = PlaybackService.shared.playbackQueue.isEmpty
+            ? VideoItem.mockItems
+            : PlaybackService.shared.playbackQueue
+        guard !pool.isEmpty else { return }
+
+        if isShuffle && pool.count > 1 {
+            let candidates = pool.filter { $0.id != video.id }
+            if let randomTrack = candidates.randomElement() {
+                switchTrack(to: randomTrack)
+                return
+            }
+        }
+
+        if let idx = pool.firstIndex(where: { $0.id == video.id }) {
+            let nextIdx = (idx + offset + pool.count) % pool.count
+            switchTrack(to: pool[nextIdx])
+        } else {
+            switchTrack(to: pool[0])
+        }
     }
 
     func toggleFavorite() {
@@ -164,6 +299,14 @@ final class PlayerViewModel: ObservableObject {
         guard YouTubeAPIService.shared.hasConfiguredAPIKey else { return }
         if let enriched = try? await YouTubeAPIService.shared.fetchVideoDetail(videoId: video.id) {
             self.video = enriched
+            if PlaybackService.shared.currentVideo?.id == enriched.id {
+                NowPlayingService.shared.updateNowPlaying(
+                    video: enriched,
+                    isPlaying: PlaybackService.shared.isPlaying,
+                    elapsedTime: PlaybackService.shared.currentTime,
+                    duration: PlaybackService.shared.duration
+                )
+            }
         }
     }
 
@@ -172,7 +315,7 @@ final class PlayerViewModel: ObservableObject {
             .publisher(for: Notification.Name("SleepTimerFired"))
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.pausePlayer()
+                self?.pausePlayer(userInitiated: true)
             }
             .store(in: &cancellables)
     }
