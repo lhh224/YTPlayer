@@ -22,11 +22,11 @@ struct PlayerView: View {
 
     @State private var showUpNextSheet = false
     @State private var showPlaylistSheet = false
+    @State private var playlistTargetVideo: VideoItem? = nil
     @State private var showSleepTimerSheet = false
     @State private var newPlaylistName = ""
     @State private var isSeeking = false
     @State private var scrubProgress: Double = 0
-    @State private var isAutoplayNext = true
     @State private var isSubscribed = false
     @State private var copiedLinkToast = false
 
@@ -39,6 +39,18 @@ struct PlayerView: View {
                 queue: queue
             )
         )
+    }
+
+    private var miniPlayerBottomPadding: CGFloat {
+        #if canImport(UIKit)
+        let bottomInset = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first(where: { $0.isKeyWindow })?.safeAreaInsets.bottom ?? 0
+        return bottomInset > 0 ? 52 : 74
+        #else
+        return 68
+        #endif
     }
 
     private var isMinimized: Bool {
@@ -115,7 +127,7 @@ struct PlayerView: View {
             if router.isPlayerPresented && router.isPlayerMinimized {
                 miniPlayerBar
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 72)
+                    .padding(.bottom, miniPlayerBottomPadding)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -395,6 +407,7 @@ struct PlayerView: View {
                     .buttonStyle(.plain)
 
                     Button {
+                        playlistTargetVideo = vm.video
                         showPlaylistSheet = true
                     } label: {
                         ZStack {
@@ -490,11 +503,12 @@ struct PlayerView: View {
                     title: "Danh sách",
                     isActive: false
                 ) {
+                    playlistTargetVideo = vm.video
                     showPlaylistSheet = true
                 }
 
                 Button {
-                    shareCurrentVideo()
+                    shareVideo(vm.video)
                 } label: {
                     VStack(spacing: 6) {
                         ZStack {
@@ -516,9 +530,9 @@ struct PlayerView: View {
                 quickActionButton(
                     icon: "play.rectangle",
                     title: "Tự động phát",
-                    isActive: isAutoplayNext
+                    isActive: vm.isAutoplayNext
                 ) {
-                    isAutoplayNext.toggle()
+                    vm.isAutoplayNext.toggle()
                 }
             }
             .padding(.horizontal, 20)
@@ -705,7 +719,7 @@ struct PlayerView: View {
                             HStack(spacing: 5) {
                                 Image(systemName: vm.isFavorite ? "hand.thumbsup.fill" : "hand.thumbsup")
                                     .foregroundColor(vm.isFavorite ? Color.ytRed : .white)
-                                Text(vm.isFavorite ? "Đã thích" : "24K")
+                                Text(vm.isFavorite ? "Đã thích" : "Thích")
                                     .font(.system(size: 12, weight: .medium))
                                     .foregroundColor(.white)
                             }
@@ -716,6 +730,7 @@ struct PlayerView: View {
                         .buttonStyle(.plain)
 
                         Button {
+                            playlistTargetVideo = vm.video
                             showPlaylistSheet = true
                         } label: {
                             HStack(spacing: 5) {
@@ -732,7 +747,7 @@ struct PlayerView: View {
                         .buttonStyle(.plain)
 
                         Button {
-                            shareCurrentVideo()
+                            shareVideo(vm.video)
                         } label: {
                             HStack(spacing: 5) {
                                 Image(systemName: "arrow.up.right")
@@ -809,57 +824,83 @@ struct PlayerView: View {
 
                     let relatedList = PlaybackService.shared.playbackQueue.filter { $0.id != vm.video.id }
                     ForEach(relatedList.isEmpty ? VideoItem.mockItems.filter { $0.id != vm.video.id } : relatedList) { item in
-                        Button {
-                            vm.switchTrack(to: item)
-                        } label: {
-                            HStack(spacing: 12) {
-                                ZStack(alignment: .bottomTrailing) {
-                                    AsyncImageView(urlString: item.thumbnailURL)
-                                        .aspectRatio(16 / 9, contentMode: .fill)
-                                        .frame(width: 120, height: 68)
-                                        .cornerRadius(12)
-                                        .clipped()
+                        HStack(spacing: 12) {
+                            Button {
+                                vm.switchTrack(to: item)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    ZStack(alignment: .bottomTrailing) {
+                                        AsyncImageView(urlString: item.thumbnailURL)
+                                            .aspectRatio(16 / 9, contentMode: .fill)
+                                            .frame(width: 120, height: 68)
+                                            .cornerRadius(12)
+                                            .clipped()
 
-                                    if !item.duration.isEmpty {
-                                        Text(item.duration)
-                                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 4)
-                                            .padding(.vertical, 2)
-                                            .background(Color.black.opacity(0.85))
-                                            .cornerRadius(3)
-                                            .padding(4)
+                                        if !item.duration.isEmpty {
+                                            Text(item.duration)
+                                                .font(.system(size: 9, weight: .bold, design: .rounded))
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, 4)
+                                                .padding(.vertical, 2)
+                                                .background(Color.black.opacity(0.85))
+                                                .cornerRadius(3)
+                                                .padding(4)
+                                        }
                                     }
-                                }
 
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(item.title)
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundColor(.white)
-                                        .lineLimit(2)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(item.title)
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundColor(.white)
+                                            .lineLimit(2)
+                                            .multilineTextAlignment(.leading)
 
-                                    Text(item.channelName)
-                                        .font(.system(size: 11))
-                                        .foregroundColor(Color.ytSubheadlineMuted)
-                                        .lineLimit(1)
-
-                                    if !item.formattedViewCount.isEmpty {
-                                        Text(item.formattedViewCount)
+                                        Text(item.channelName)
                                             .font(.system(size: 11))
                                             .foregroundColor(Color.ytSubheadlineMuted)
+                                            .lineLimit(1)
+
+                                        if !item.formattedViewCount.isEmpty {
+                                            Text(item.formattedViewCount)
+                                                .font(.system(size: 11))
+                                                .foregroundColor(Color.ytSubheadlineMuted)
+                                        }
                                     }
+
+                                    Spacer(minLength: 4)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+
+                            Menu {
+                                Button {
+                                    PlaybackService.shared.playbackQueue.append(item)
+                                } label: {
+                                    Label("Phát tiếp theo", systemImage: "text.insert")
                                 }
 
-                                Spacer(minLength: 4)
+                                Button {
+                                    playlistTargetVideo = item
+                                    showPlaylistSheet = true
+                                } label: {
+                                    Label("Lưu vào danh sách phát", systemImage: "text.badge.plus")
+                                }
 
+                                Button {
+                                    shareVideo(item)
+                                } label: {
+                                    Label("Chia sẻ", systemImage: "square.and.arrow.up")
+                                }
+                            } label: {
                                 Image(systemName: "ellipsis")
                                     .font(.system(size: 14, weight: .bold))
                                     .foregroundColor(Color.ytSubheadlineMuted)
-                                    .frame(width: 28, height: 28)
+                                    .frame(width: 32, height: 32)
+                                    .contentShape(Rectangle())
                             }
-                            .padding(.horizontal, 16)
                         }
-                        .buttonStyle(.plain)
+                        .padding(.horizontal, 16)
                     }
                 }
                 .padding(.bottom, 40)
@@ -907,7 +948,9 @@ struct PlayerView: View {
     // MARK: - Playlist Sheet
 
     private var playlistSheetView: some View {
-        VStack(spacing: 16) {
+        let targetVideo = playlistTargetVideo ?? vm.video
+
+        return VStack(spacing: 16) {
             HStack {
                 Text("Lưu vào Danh sách phát")
                     .font(.system(size: 17, weight: .bold))
@@ -926,7 +969,7 @@ struct PlayerView: View {
                     .textFieldStyle(.roundedBorder)
                 Button("+ Tạo") {
                     if !newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty {
-                        libraryRepo.createPlaylist(name: newPlaylistName, initialVideo: vm.video)
+                        libraryRepo.createPlaylist(name: newPlaylistName, initialVideo: targetVideo)
                         newPlaylistName = ""
                     }
                 }
@@ -935,9 +978,9 @@ struct PlayerView: View {
             .padding(.horizontal, 16)
 
             List(libraryRepo.fetchPlaylists()) { pl in
-                let contains = pl.items.contains(where: { $0.id == vm.video.id })
+                let contains = pl.items.contains(where: { $0.id == targetVideo.id })
                 Button {
-                    libraryRepo.toggleVideo(vm.video, inPlaylistId: pl.id)
+                    libraryRepo.toggleVideo(targetVideo, inPlaylistId: pl.id)
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
@@ -1020,8 +1063,8 @@ struct PlayerView: View {
         .background(Color.black.ignoresSafeArea())
     }
 
-    private func shareCurrentVideo() {
-        guard let url = URL(string: "https://www.youtube.com/watch?v=\(vm.video.id)") else { return }
+    private func shareVideo(_ targetVideo: VideoItem) {
+        guard let url = URL(string: "https://www.youtube.com/watch?v=\(targetVideo.id)") else { return }
         #if canImport(UIKit)
         let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,

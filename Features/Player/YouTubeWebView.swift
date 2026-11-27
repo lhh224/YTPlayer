@@ -26,6 +26,12 @@ struct YouTubeWebView: UIViewRepresentable {
         configuration.allowsPictureInPictureMediaPlayback = true
 
         let userContentController = WKUserContentController()
+        let visibilityUserScript = WKUserScript(
+            source: PlaybackService.visibilityOverrideScript,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        userContentController.addUserScript(visibilityUserScript)
         userContentController.add(context.coordinator, name: "ytPlayer")
         configuration.userContentController = userContentController
 
@@ -105,6 +111,12 @@ struct YouTubeWebView: NSViewRepresentable {
         configuration.allowsAirPlayForMediaPlayback = true
 
         let userContentController = WKUserContentController()
+        let visibilityUserScript = WKUserScript(
+            source: PlaybackService.visibilityOverrideScript,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        userContentController.addUserScript(visibilityUserScript)
         userContentController.add(context.coordinator, name: "ytPlayer")
         configuration.userContentController = userContentController
 

@@ -29,6 +29,7 @@ final class PlayerViewModel: ObservableObject {
     @Published var isFavorite: Bool = false
     @Published var isShuffle: Bool = false
     @Published var isRepeat: Bool = false
+    @Published var isAutoplayNext: Bool = true
     @Published var volume: Double = 100
     @Published var showLyrics: Bool = false
 
@@ -191,7 +192,7 @@ final class PlayerViewModel: ObservableObject {
             case 0:
                 if isRepeat {
                     restartVideo()
-                } else if PlaybackService.shared.playbackQueue.count > 1 {
+                } else if isAutoplayNext && PlaybackService.shared.playbackQueue.count > 1 {
                     playNextTrack()
                 } else {
                     playerState = .ended

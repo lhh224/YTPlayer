@@ -4,9 +4,10 @@ import SwiftUI
 private struct ShimmerModifier: ViewModifier {
     @State private var phase: CGFloat = -1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     func body(content: Content) -> some View {
-        if reduceMotion {
+        if reduceMotion || scenePhase != .active {
             content
         } else {
             content
@@ -15,7 +16,7 @@ private struct ShimmerModifier: ViewModifier {
                         LinearGradient(
                             gradient: Gradient(stops: [
                                 .init(color: Color.white.opacity(0.0), location: 0.0),
-                                .init(color: Color.white.opacity(0.18), location: 0.5),
+                                .init(color: Color.white.opacity(0.06), location: 0.5),
                                 .init(color: Color.white.opacity(0.0), location: 1.0)
                             ]),
                             startPoint: .leading,
@@ -27,8 +28,9 @@ private struct ShimmerModifier: ViewModifier {
                     .clipped()
                 )
                 .onAppear {
+                    phase = -1
                     withAnimation(
-                        .easeInOut(duration: 1.6)
+                        .easeInOut(duration: 1.7)
                         .repeatForever(autoreverses: false)
                     ) {
                         phase = 1
@@ -52,26 +54,26 @@ struct LoadingSkeletonView: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius)
-            .fill(Color(red: 0x24 / 255.0, green: 0x24 / 255.0, blue: 0x26 / 255.0))
+            .fill(Color(red: 0x14 / 255.0, green: 0x14 / 255.0, blue: 0x16 / 255.0))
             .frame(width: width, height: height)
             .shimmer()
     }
 }
 
-// MARK: - VideoCardSkeleton (Matching Image 1)
+// MARK: - VideoCardSkeleton (Deep OLED Dark)
 struct VideoCardSkeleton: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             // 16:9 Thumbnail placeholder with bottom-right duration badge
             ZStack(alignment: .bottomTrailing) {
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(red: 0x20 / 255.0, green: 0x20 / 255.0, blue: 0x22 / 255.0))
+                    .fill(Color(red: 0x11 / 255.0, green: 0x11 / 255.0, blue: 0x13 / 255.0))
                     .aspectRatio(16 / 9, contentMode: .fit)
                     .shimmer()
 
                 // Duration placeholder
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(red: 0x16 / 255.0, green: 0x16 / 255.0, blue: 0x18 / 255.0))
+                    .fill(Color(red: 0x08 / 255.0, green: 0x08 / 255.0, blue: 0x0A / 255.0))
                     .frame(width: 44, height: 18)
                     .padding(10)
             }
@@ -80,7 +82,7 @@ struct VideoCardSkeleton: View {
             // Info row: Avatar + Title lines + 3-dots menu placeholder
             HStack(alignment: .top, spacing: 12) {
                 Circle()
-                    .fill(Color(red: 0x24 / 255.0, green: 0x24 / 255.0, blue: 0x26 / 255.0))
+                    .fill(Color(red: 0x14 / 255.0, green: 0x14 / 255.0, blue: 0x16 / 255.0))
                     .frame(width: 36, height: 36)
                     .shimmer()
 
@@ -93,9 +95,9 @@ struct VideoCardSkeleton: View {
 
                 // 3 dots menu placeholder
                 VStack(spacing: 3) {
-                    Circle().fill(Color(red: 0x36 / 255.0, green: 0x36 / 255.0, blue: 0x38 / 255.0)).frame(width: 3.5, height: 3.5)
-                    Circle().fill(Color(red: 0x36 / 255.0, green: 0x36 / 255.0, blue: 0x38 / 255.0)).frame(width: 3.5, height: 3.5)
-                    Circle().fill(Color(red: 0x36 / 255.0, green: 0x36 / 255.0, blue: 0x38 / 255.0)).frame(width: 3.5, height: 3.5)
+                    Circle().fill(Color(red: 0x1D / 255.0, green: 0x1D / 255.0, blue: 0x20 / 255.0)).frame(width: 3.5, height: 3.5)
+                    Circle().fill(Color(red: 0x1D / 255.0, green: 0x1D / 255.0, blue: 0x20 / 255.0)).frame(width: 3.5, height: 3.5)
+                    Circle().fill(Color(red: 0x1D / 255.0, green: 0x1D / 255.0, blue: 0x20 / 255.0)).frame(width: 3.5, height: 3.5)
                 }
                 .padding(.top, 4)
                 .padding(.trailing, 4)

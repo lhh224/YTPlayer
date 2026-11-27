@@ -4,6 +4,7 @@ enum LibraryActiveView: Hashable {
     case main
     case favorites
     case history
+    case myPlaylists
     case playlistDetail(UserPlaylist)
 }
 
@@ -18,14 +19,7 @@ struct LibraryView: View {
     @State private var showClearHistoryConfirm = false
 
     private var playlists: [UserPlaylist] {
-        let list = libraryRepo.fetchPlaylists()
-        if !list.isEmpty { return list }
-        // Default sample playlists if none created yet
-        return [
-            UserPlaylist(id: "pl_chill", name: "Nhạc chill", items: Array(VideoItem.mockItems.prefix(2))),
-            UserPlaylist(id: "pl_ballad", name: "Ballad Việt", items: Array(VideoItem.mockItems.suffix(2))),
-            UserPlaylist(id: "pl_live", name: "Quốc Thiên Live", items: [VideoItem.mockItems[0]])
-        ]
+        libraryRepo.fetchPlaylists()
     }
 
     var body: some View {
@@ -40,6 +34,8 @@ struct LibraryView: View {
                     detailListView(title: "Bài hát yêu thích", items: vm.favoriteItems, isHistory: false)
                 case .history:
                     detailListView(title: "Xem gần đây", items: vm.historyItems, isHistory: true)
+                case .myPlaylists:
+                    myPlaylistsView
                 case .playlistDetail(let pl):
                     playlistDetailView(playlist: pl)
                 }
@@ -108,7 +104,7 @@ struct LibraryView: View {
                             icon: "music.note.list",
                             title: "Playlist của tôi",
                             subtitle: "\(playlists.count) playlist",
-                            action: { /* Scroll to playlist or stay */ }
+                            action: { activeView = .myPlaylists }
                         )
                     }
                     .background(Color(red: 0x1C / 255.0, green: 0x1C / 255.0, blue: 0x1E / 255.0))
@@ -136,62 +132,159 @@ struct LibraryView: View {
                         .padding(.horizontal, 16)
 
                         // Playlist Items List
-                        VStack(spacing: 12) {
-                            ForEach(playlists) { pl in
-                                HStack(spacing: 14) {
-                                    // Thumbnail
-                                    let thumb = pl.items.first?.thumbnailURL ?? VideoItem.mockItems[0].thumbnailURL
-                                    AsyncImageView(urlString: thumb)
-                                        .aspectRatio(1.0, contentMode: .fill)
-                                        .frame(width: 58, height: 58)
-                                        .cornerRadius(12)
-                                        .clipped()
-
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(pl.name)
-                                            .font(.system(size: 15, weight: .semibold))
-                                            .foregroundColor(.white)
-                                            .lineLimit(1)
-
-                                        Text("\(pl.items.count) bài hát")
-                                            .font(.system(size: 13))
-                                            .foregroundColor(Color.ytSubheadlineMuted)
-                                    }
-
-                                    Spacer()
-
-                                    Menu {
-                                        if let first = pl.items.first {
-                                            Button {
-                                                router.presentPlayer(video: first, queue: pl.items)
-                                            } label: {
-                                                Label("Phát tất cả", systemImage: "play.fill")
-                                            }
-                                        }
-
-                                        Button(role: .destructive) {
-                                            libraryRepo.deletePlaylist(id: pl.id)
-                                        } label: {
-                                            Label("Xóa playlist", systemImage: "trash")
-                                        }
-                                    } label: {
-                                        Image(systemName: "ellipsis")
-                                            .font(.system(size: 16, weight: .bold))
-                                            .foregroundColor(Color.ytSubheadlineMuted)
-                                            .frame(width: 36, height: 36)
-                                            .contentShape(Rectangle())
-                                    }
-                                }
-                                .padding(.horizontal, 16)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    activeView = .playlistDetail(pl)
+                        if playlists.isEmpty {
+                            HStack {
+                                Spacer()
+                                Text("Chưa có playlist nào. Bấm '+ Tạo playlist' để tạo mới.")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color.ytSubheadlineMuted)
+                                    .padding(.vertical, 20)
+                                Spacer()
+                            }
+                        } else {
+                            VStack(spacing: 12) {
+                                ForEach(playlists) { pl in
+                                    playlistRow(pl: pl)
                                 }
                             }
                         }
                     }
                 }
                 .padding(.bottom, 130)
+            }
+        }
+    }
+
+    private func playlistRow(pl: UserPlaylist) -> some View {
+        HStack(spacing: 14) {
+            // Thumbnail
+            let thumb = pl.items.first?.thumbnailURL ?? VideoItem.mockItems[0].thumbnailURL
+            AsyncImageView(urlString: thumb)
+                .aspectRatio(1.0, contentMode: .fill)
+                .frame(width: 58, height: 58)
+                .cornerRadius(12)
+                .clipped()
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(pl.name)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+
+                Text("\(pl.items.count) bài hát")
+                    .font(.system(size: 13))
+                    .foregroundColor(Color.ytSubheadlineMuted)
+            }
+
+            Spacer()
+
+            Menu {
+                if let first = pl.items.first {
+                    Button {
+                        router.presentPlayer(video: first, queue: pl.items)
+                    } label: {
+                        Label("Phát tất cả", systemImage: "play.fill")
+                    }
+                }
+
+                Button(role: .destructive) {
+                    libraryRepo.deletePlaylist(id: pl.id)
+                } label: {
+                    Label("Xóa playlist", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(Color.ytSubheadlineMuted)
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
+            }
+        }
+        .padding(.horizontal, 16)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            activeView = .playlistDetail(pl)
+        }
+    }
+
+    // MARK: - My Playlists View (Tapped "Playlist của tôi >")
+
+    private var myPlaylistsView: some View {
+        VStack(spacing: 0) {
+            // Header with Back button + Title + "+ Tạo"
+            HStack(spacing: 12) {
+                Button {
+                    activeView = .main
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("Thư viện")
+                            .font(.system(size: 16))
+                    }
+                    .foregroundColor(Color.ytRed)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                Text("Playlist của tôi")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
+
+                Spacer()
+
+                Button {
+                    showCreatePlaylistDialog = true
+                } label: {
+                    Text("+ Tạo")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(Color.ytRed)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            if playlists.isEmpty {
+                VStack(spacing: 14) {
+                    Spacer()
+                    Image(systemName: "music.note.list")
+                        .font(.system(size: 48))
+                        .foregroundColor(Color.ytSubheadlineMuted)
+                    Text("Chưa có playlist nào")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.white)
+                    Text("Tạo danh sách phát để lưu trữ các bài hát yêu thích của bạn.")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color.ytSubheadlineMuted)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                    Button {
+                        showCreatePlaylistDialog = true
+                    } label: {
+                        Text("Tạo playlist đầu tiên")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .background(Color.ytRed)
+                            .cornerRadius(20)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 8)
+                    Spacer()
+                }
+            } else {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ForEach(playlists) { pl in
+                            playlistRow(pl: pl)
+                        }
+                    }
+                    .padding(.top, 8)
+                    .padding(.bottom, 120)
+                }
             }
         }
     }
@@ -319,7 +412,9 @@ struct LibraryView: View {
     // MARK: - Playlist Detail View
 
     private func playlistDetailView(playlist: UserPlaylist) -> some View {
-        VStack(spacing: 0) {
+        let currentPl = libraryRepo.fetchPlaylists().first(where: { $0.id == playlist.id }) ?? playlist
+
+        return VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Button {
                     activeView = .main
@@ -336,30 +431,50 @@ struct LibraryView: View {
 
                 Spacer()
 
-                Text(playlist.name)
+                Text(currentPl.name)
                     .font(.system(size: 16, weight: .bold))
                     .foregroundColor(.white)
+                    .lineLimit(1)
 
                 Spacer()
 
-                if let first = playlist.items.first {
-                    Button {
-                        router.presentPlayer(video: first, queue: playlist.items)
-                    } label: {
-                        Image(systemName: "play.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(Color.ytRed)
+                HStack(spacing: 12) {
+                    if let first = currentPl.items.first {
+                        Button {
+                            router.presentPlayer(video: first, queue: currentPl.items)
+                        } label: {
+                            Image(systemName: "play.circle.fill")
+                                .font(.system(size: 22))
+                                .foregroundColor(Color.ytRed)
+                        }
+                        .buttonStyle(.plain)
                     }
-                } else {
-                    Spacer().frame(width: 60)
+
+                    Menu {
+                        Button(role: .destructive) {
+                            libraryRepo.deletePlaylist(id: currentPl.id)
+                            activeView = .main
+                        } label: {
+                            Label("Xóa playlist", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(Color.ytSubheadlineMuted)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
 
-            if playlist.items.isEmpty {
+            if currentPl.items.isEmpty {
                 VStack(spacing: 12) {
                     Spacer()
+                    Image(systemName: "music.note")
+                        .font(.system(size: 44))
+                        .foregroundColor(Color.ytSubheadlineMuted)
                     Text("Playlist này chưa có bài hát nào.")
                         .font(.system(size: 15))
                         .foregroundColor(Color.ytSubheadlineMuted)
@@ -367,15 +482,21 @@ struct LibraryView: View {
                 }
             } else {
                 List {
-                    ForEach(playlist.items) { video in
+                    ForEach(currentPl.items) { video in
                         Button {
-                            router.presentPlayer(video: video, queue: playlist.items)
+                            router.presentPlayer(video: video, queue: currentPl.items)
                         } label: {
                             LibraryRowView(video: video)
                         }
                         .buttonStyle(.plain)
                         .listRowBackground(Color.black)
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    }
+                    .onDelete { offsets in
+                        for index in offsets {
+                            let video = currentPl.items[index]
+                            libraryRepo.removeVideo(videoId: video.id, fromPlaylistId: currentPl.id)
+                        }
                     }
                 }
                 .listStyle(.plain)

@@ -169,10 +169,59 @@ final class PlaybackService: ObservableObject {
         }
     }
 
+    // MARK: - Page Visibility & Background Audio Guard Script
+
+    static let visibilityOverrideScript: String = """
+    (function() {
+        if (window.__ytVisibilityOverrideInstalled) { return; }
+        window.__ytVisibilityOverrideInstalled = true;
+
+        try {
+            Object.defineProperty(document, 'hidden', {
+                configurable: true,
+                get: function() { return false; }
+            });
+            Object.defineProperty(document, 'visibilityState', {
+                configurable: true,
+                get: function() { return 'visible'; }
+            });
+            Object.defineProperty(document, 'webkitHidden', {
+                configurable: true,
+                get: function() { return false; }
+            });
+            Object.defineProperty(document, 'webkitVisibilityState', {
+                configurable: true,
+                get: function() { return 'visible'; }
+            });
+        } catch (e) {}
+
+        var stopVisibilityPropagation = function(event) {
+            if (event && typeof event.stopImmediatePropagation === 'function') {
+                event.stopImmediatePropagation();
+            }
+            if (event && typeof event.stopPropagation === 'function') {
+                event.stopPropagation();
+            }
+        };
+
+        ['visibilitychange', 'webkitvisibilitychange'].forEach(function(evtName) {
+            window.addEventListener(evtName, stopVisibilityPropagation, true);
+            document.addEventListener(evtName, stopVisibilityPropagation, true);
+        });
+
+        var origDocAdd = Document.prototype.addEventListener;
+        Document.prototype.addEventListener = function(type, listener, options) {
+            if (type === 'visibilitychange' || type === 'webkitvisibilitychange') {
+                return;
+            }
+            return origDocAdd.call(this, type, listener, options);
+        };
+    })();
+    """
+
     // MARK: - Public API (HTML & URL Builders)
 
     /// Builds a clean, single-instance HTML host for the official YouTube IFrame Player API:
-    /// - Zero invasive DOM/visibility hacks or competing timers during foreground/background switches.
     /// - Deduplicated `navigator.mediaSession` metadata (set once per track, never per state tick).
     /// - Passive `visibilitychange`, `pagehide`, and `pageshow` telemetry forwarded for diagnostics.
     func buildEmbedHTML(videoId: String, autoplay: Bool = false, initialVideo: VideoItem? = nil) -> String {
@@ -207,10 +256,20 @@ final class PlaybackService: ObservableObject {
                 var currentLoadedVideoId = '\(videoId)';
                 var lastAppliedMetaKey = '';
                 window.__ytUserPaused = false;
+                window.__ytAppInBackground = false;
+                window.__ytBgEnabled = true;
                 window.__ytMeta = {
                     title: '\(safeTitle)',
                     artist: '\(safeArtist)',
                     thumb: '\(safeThumb)'
+                };
+
+                window.__ytSetBackgroundState = function(inBg, bgEnabled, userPaused) {
+                    window.__ytAppInBackground = Boolean(inBg);
+                    window.__ytBgEnabled = Boolean(bgEnabled);
+                    if (typeof userPaused !== 'undefined') {
+                        window.__ytUserPaused = Boolean(userPaused);
+                    }
                 };
 
                 function postToNative(payload) {
@@ -663,10 +722,10 @@ final class PlaybackService: ObservableObject {
         #if os(iOS)
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
+            try session.setCategory(.playback, mode: .default, options: [])
             try session.setActive(true)
             isAudioSessionActive = true
-            PlaybackDiagnostics.shared.markLifecycle("audioSession.activated", details: "category=playback, mode=moviePlayback")
+            PlaybackDiagnostics.shared.markLifecycle("audioSession.activated", details: "category=playback, mode=default")
         } catch {
             PlaybackDiagnostics.shared.markLifecycle("audioSession.error", details: error.localizedDescription)
         }
@@ -682,13 +741,37 @@ final class PlaybackService: ObservableObject {
     }
 
     #if canImport(UIKit)
+    private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+
+    private func beginShortBackgroundTransitionTask() {
+        endBackgroundTransitionTask()
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "YTPlayerBackgroundAudio") { [weak self] in
+            self?.endBackgroundTransitionTask()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8.0) { [weak self] in
+            self?.endBackgroundTransitionTask()
+        }
+    }
+
+    private func endBackgroundTransitionTask() {
+        if backgroundTaskID != .invalid {
+            UIApplication.shared.endBackgroundTask(backgroundTaskID)
+            backgroundTaskID = .invalid
+        }
+    }
+
+    private func syncBackgroundFlagToWebView() {
+        let inBgLiteral = isAppInBackground ? "true" : "false"
+        let bgEnabledLiteral = isBackgroundPlaybackEnabled ? "true" : "false"
+        let userPausedLiteral = isUserPaused ? "true" : "false"
+        jsCommandExecutor?("if (window.__ytSetBackgroundState) { window.__ytSetBackgroundState(\(inBgLiteral), \(bgEnabledLiteral), \(userPausedLiteral)); }")
+    }
+
     private func handleWillResignActive() {
         PlaybackDiagnostics.shared.markLifecycle(
             "uiApplication.willResignActive",
             details: "isPlaying=\(isPlaying), userPaused=\(isUserPaused)"
         )
-        // Intentionally send ZERO JavaScript commands here so WebKit's audio pipeline
-        // is never disturbed during Notification Center / Control Center / app-switcher gestures.
     }
 
     private func handleDidEnterBackground() {
@@ -701,11 +784,19 @@ final class PlaybackService: ObservableObject {
         guard currentVideo != nil else { return }
 
         // Only issue a pause command if the user explicitly turned OFF Background Audio in Settings.
-        // Otherwise, do NOT poke playVideo()/pauseVideo()/seekTo() — let the active stream run untouched!
-        if !isBackgroundPlaybackEnabled && isPlaying {
-            pause(userInitiated: false)
-            jsCommandExecutor?("if (window.player && typeof player.getPlayerState === 'function' && player.getPlayerState() === 1) { player.pauseVideo(); }")
+        if !isBackgroundPlaybackEnabled {
+            if isPlaying {
+                pause(userInitiated: false)
+                jsCommandExecutor?("if (window.player && typeof player.getPlayerState === 'function' && player.getPlayerState() === 1) { player.pauseVideo(); }")
+            }
+            return
         }
+
+        guard isPlaying && !isUserPaused else { return }
+
+        forceReactivateAudioSession()
+        beginShortBackgroundTransitionTask()
+        syncBackgroundFlagToWebView()
     }
 
     private func handleWillEnterForeground() {
@@ -714,17 +805,13 @@ final class PlaybackService: ObservableObject {
             "uiApplication.willEnterForeground",
             details: "isPlaying=\(isPlaying), userPaused=\(isUserPaused)"
         )
-        // Zero JS bridge calls on foreground entry: WebKit re-attaches its video compositing
-        // layer cleanly without playVideo()/seekTo()/metadata re-registration interference,
-        // and user-paused videos stay strictly paused.
+        syncBackgroundFlagToWebView()
+        endBackgroundTransitionTask()
     }
 
     private func handleDidBecomeActive() {
         isAppInBackground = false
-        PlaybackDiagnostics.shared.markLifecycle(
-            "uiApplication.didBecomeActive",
-            details: "isPlaying=\(isPlaying), userPaused=\(isUserPaused)"
-        )
+        syncBackgroundFlagToWebView()
     }
     #endif
 

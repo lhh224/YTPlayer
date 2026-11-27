@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ytplayer-pwa-v7';
+const CACHE_NAME = 'ytplayer-pwa-v9';
 const APP_SHELL = [
   './',
   './index.html',

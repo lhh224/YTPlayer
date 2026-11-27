@@ -18,9 +18,23 @@ struct ContentView: View {
     /// the floating capsule bar (and Mini Player) while never being obscured at the bottom.
     private var bottomScrollClearance: CGFloat {
         if router.isPlayerPresented && router.isPlayerMinimized {
-            return 134
+            return 120
         }
-        return 72
+        return 58
+    }
+
+    /// Positions the floating capsule bar cleanly ~9pt above the iPhone Home Indicator
+    /// on Face ID devices (34pt safe area) while keeping 8pt clearance on Home-button devices.
+    private var floatingTabBarBottomPadding: CGFloat {
+        #if canImport(UIKit)
+        let bottomInset = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first(where: { $0.isKeyWindow })?.safeAreaInsets.bottom ?? 0
+        return bottomInset > 0 ? -14 : 8
+        #else
+        return 6
+        #endif
     }
 
     var body: some View {
@@ -68,7 +82,7 @@ struct ContentView: View {
                     )
                 )
                 .padding(.horizontal, 16)
-                .padding(.bottom, 6)
+                .padding(.bottom, floatingTabBarBottomPadding)
                 .zIndex(20)
                 .ignoresSafeArea(.keyboard, edges: .bottom)
             }

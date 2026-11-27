@@ -12,9 +12,25 @@ final class LibraryRepository: ObservableObject {
 
     private let context: NSManagedObjectContext
     private let playlistsDefaultsKey = "ytplayer_user_playlists_v1"
+    private let hasSeededKey = "ytplayer_has_seeded_initial_playlists_v1"
 
     init(context: NSManagedObjectContext = CoreDataStack.shared.context) {
         self.context = context
+        seedInitialPlaylistsIfNeeded()
+    }
+
+    private func seedInitialPlaylistsIfNeeded() {
+        if UserDefaults.standard.object(forKey: hasSeededKey) == nil {
+            UserDefaults.standard.set(true, forKey: hasSeededKey)
+            if UserDefaults.standard.data(forKey: playlistsDefaultsKey) == nil {
+                let defaultPlaylists = [
+                    UserPlaylist(id: "pl_chill", name: "Nhạc chill", items: Array(VideoItem.mockItems.prefix(2))),
+                    UserPlaylist(id: "pl_ballad", name: "Ballad Việt", items: Array(VideoItem.mockItems.suffix(2))),
+                    UserPlaylist(id: "pl_live", name: "Quốc Thiên Live", items: [VideoItem.mockItems[0]])
+                ]
+                savePlaylists(defaultPlaylists)
+            }
+        }
     }
 
     // MARK: - Playlists (Persisted via Codable JSON)
@@ -40,6 +56,15 @@ final class LibraryRepository: ObservableObject {
         savePlaylists(list)
     }
 
+    func renamePlaylist(id: String, newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var list = fetchPlaylists()
+        guard let idx = list.firstIndex(where: { $0.id == id }) else { return }
+        list[idx].name = trimmed
+        savePlaylists(list)
+    }
+
     func toggleVideo(_ video: VideoItem, inPlaylistId playlistId: String) {
         var list = fetchPlaylists()
         guard let idx = list.firstIndex(where: { $0.id == playlistId }) else { return }
@@ -48,6 +73,13 @@ final class LibraryRepository: ObservableObject {
         } else {
             list[idx].items.insert(video, at: 0)
         }
+        savePlaylists(list)
+    }
+
+    func removeVideo(videoId: String, fromPlaylistId playlistId: String) {
+        var list = fetchPlaylists()
+        guard let idx = list.firstIndex(where: { $0.id == playlistId }) else { return }
+        list[idx].items.removeAll { $0.id == videoId }
         savePlaylists(list)
     }
 
@@ -60,7 +92,9 @@ final class LibraryRepository: ObservableObject {
     private func savePlaylists(_ list: [UserPlaylist]) {
         if let data = try? JSONEncoder().encode(list) {
             UserDefaults.standard.set(data, forKey: playlistsDefaultsKey)
-            objectWillChange.send()
+            DispatchQueue.main.async { [weak self] in
+                self?.objectWillChange.send()
+            }
         }
     }
 

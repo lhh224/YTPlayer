@@ -8,6 +8,7 @@ struct HomeView: View {
 
     @State private var selectedVideoForPlaylist: VideoItem? = nil
     @State private var showPlaylistSheet = false
+    @State private var showActivitySheet = false
     @State private var newPlaylistName = ""
 
     private var historyVideos: [VideoItem] {
@@ -57,6 +58,9 @@ struct HomeView: View {
         .sheet(isPresented: $showPlaylistSheet) {
             playlistSheetView
         }
+        .sheet(isPresented: $showActivitySheet) {
+            activitySheetView
+        }
         .onAppear {
             vm.ensureFeedLoaded(repo: libraryRepo)
         }
@@ -93,17 +97,17 @@ struct HomeView: View {
 
             Spacer()
 
-            // Notification Bell
+            // Notification & Activity Bell
             Button {
-                // Bell action / feedback
                 #if canImport(UIKit)
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
                 #endif
+                showActivitySheet = true
             } label: {
-                Image(systemName: "bell")
+                Image(systemName: SleepTimerService.shared.isActive ? "bell.badge.fill" : "bell")
                     .font(.system(size: 19, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(SleepTimerService.shared.isActive ? Color.ytRed : .white)
                     .frame(width: 38, height: 38)
                     .contentShape(Rectangle())
             }
@@ -119,17 +123,23 @@ struct HomeView: View {
 
     private var continueListeningSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 6) {
-                Text("Nghe tiếp")
-                    .font(.system(size: 19, weight: .bold))
-                    .foregroundColor(.white)
+            Button {
+                router.selectedTab = YTBottomTab.library.rawValue
+            } label: {
+                HStack(spacing: 6) {
+                    Text("Nghe tiếp")
+                        .font(.system(size: 19, weight: .bold))
+                        .foregroundColor(.white)
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(Color.ytSubheadlineMuted)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Color.ytSubheadlineMuted)
 
-                Spacer()
+                    Spacer()
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .padding(.horizontal, 16)
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -262,8 +272,97 @@ struct HomeView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .listRowBackground(Color.black)
             }
             .listStyle(.plain)
+        }
+        .background(Color.black.ignoresSafeArea())
+    }
+
+    // MARK: - Activity & Notifications Sheet
+
+    private var activitySheetView: some View {
+        VStack(spacing: 18) {
+            HStack {
+                Text("Hoạt động & Trạng thái")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                Spacer()
+                Button("Đóng") {
+                    showActivitySheet = false
+                }
+                .foregroundColor(Color.ytRed)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 18)
+
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    Image(systemName: "moon.zzz.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(SleepTimerService.shared.isActive ? Color.ytRed : Color.ytSubheadlineMuted)
+                        .frame(width: 36, height: 36)
+                        .background(Color.ytSurfaceSecondary)
+                        .cornerRadius(10)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Hẹn giờ tắt nhạc")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                        Text(SleepTimerService.shared.isActive ? "Còn lại \(SleepTimerService.shared.remainingFormatted)" : "Chưa bật")
+                            .font(.system(size: 12))
+                            .foregroundColor(Color.ytSubheadlineMuted)
+                    }
+                    Spacer()
+                }
+                .padding(14)
+                .background(Color.ytSurfaceOLED)
+                .cornerRadius(14)
+
+                HStack(spacing: 12) {
+                    Image(systemName: "music.note.house.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(Color.ytRed)
+                        .frame(width: 36, height: 36)
+                        .background(Color.ytSurfaceSecondary)
+                        .cornerRadius(10)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Thư viện cá nhân")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                        Text("\(libraryRepo.fetchFavorites().count) yêu thích • \(libraryRepo.fetchHistory().count) lịch sử • \(libraryRepo.fetchPlaylists().count) playlist")
+                            .font(.system(size: 12))
+                            .foregroundColor(Color.ytSubheadlineMuted)
+                    }
+                    Spacer()
+                }
+                .padding(14)
+                .background(Color.ytSurfaceOLED)
+                .cornerRadius(14)
+
+                Button {
+                    showActivitySheet = false
+                    Task {
+                        await vm.loadTrending(repo: libraryRepo, forceRefresh: true)
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Làm mới đề xuất trang chủ")
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(Color.ytRed)
+                    .cornerRadius(14)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+
+            Spacer()
         }
         .background(Color.black.ignoresSafeArea())
     }
