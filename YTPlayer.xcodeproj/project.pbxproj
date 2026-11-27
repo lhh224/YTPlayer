@@ -17,6 +17,7 @@
 		808316D18F71914403D99D2F /* ErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A489697B9E8445A41AA22DA6 /* ErrorView.swift */; };
 		FA165C49D7C7165AFB4B1A9B /* LoadingSkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 182F130DB7494F0170FD8E24 /* LoadingSkeletonView.swift */; };
 		AB9226A4AB2D411E172AECD7 /* YTButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54300CB6CCF1ED2175448946 /* YTButtonStyle.swift */; };
+		E184C729AF0341B892D650C4 /* FloatingTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C94B801EA254D798B12F340 /* FloatingTabBar.swift */; };
 		4F3C5B487DF78F405CC30BE5 /* Spacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0335BD1988464ED2BF95EE5 /* Spacing.swift */; };
 		BDD0C2B5DF9621986526AC9A /* Typography.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFA95873C9CAB620EA1F185D /* Typography.swift */; };
 		1FB6EA8552B1BBB9B7510DC2 /* AppError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 851EB784E4C0EED3CB643F79 /* AppError.swift */; };
@@ -64,6 +65,7 @@
 		A489697B9E8445A41AA22DA6 /* ErrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ErrorView.swift"; path = "Core/DesignSystem/Components/ErrorView.swift"; sourceTree = SOURCE_ROOT; };
 		182F130DB7494F0170FD8E24 /* LoadingSkeletonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LoadingSkeletonView.swift"; path = "Core/DesignSystem/Components/LoadingSkeletonView.swift"; sourceTree = SOURCE_ROOT; };
 		54300CB6CCF1ED2175448946 /* YTButtonStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "YTButtonStyle.swift"; path = "Core/DesignSystem/Components/YTButtonStyle.swift"; sourceTree = SOURCE_ROOT; };
+		3C94B801EA254D798B12F340 /* FloatingTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FloatingTabBar.swift"; path = "Core/DesignSystem/Components/FloatingTabBar.swift"; sourceTree = SOURCE_ROOT; };
 		D0335BD1988464ED2BF95EE5 /* Spacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Spacing.swift"; path = "Core/DesignSystem/Spacing.swift"; sourceTree = SOURCE_ROOT; };
 		DFA95873C9CAB620EA1F185D /* Typography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Typography.swift"; path = "Core/DesignSystem/Typography.swift"; sourceTree = SOURCE_ROOT; };
 		851EB784E4C0EED3CB643F79 /* AppError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AppError.swift"; path = "Core/Models/AppError.swift"; sourceTree = SOURCE_ROOT; };
@@ -147,6 +149,7 @@
 				A489697B9E8445A41AA22DA6,
 				182F130DB7494F0170FD8E24,
 				54300CB6CCF1ED2175448946,
+				3C94B801EA254D798B12F340,
 				851EB784E4C0EED3CB643F79,
 				EACF3D4F7EA0A651D4AC4FAC,
 				8C1F8E82A50F319441029302,
@@ -287,6 +290,7 @@
 				808316D18F71914403D99D2F /* ErrorView.swift in Sources */,
 				FA165C49D7C7165AFB4B1A9B /* LoadingSkeletonView.swift in Sources */,
 				AB9226A4AB2D411E172AECD7 /* YTButtonStyle.swift in Sources */,
+				E184C729AF0341B892D650C4 /* FloatingTabBar.swift in Sources */,
 				4F3C5B487DF78F405CC30BE5 /* Spacing.swift in Sources */,
 				BDD0C2B5DF9621986526AC9A /* Typography.swift in Sources */,
 				1FB6EA8552B1BBB9B7510DC2 /* AppError.swift in Sources */,
@@ -377,7 +381,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 8;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "YT Player";
@@ -385,7 +389,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.1.4;
+				MARKETING_VERSION = 2.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ytplayer.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -398,7 +402,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 8;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "YT Player";
@@ -406,7 +410,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.1.4;
+				MARKETING_VERSION = 2.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ytplayer.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

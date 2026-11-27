@@ -18,12 +18,12 @@ final class AppRouter: ObservableObject {
     @Published var selectedTab: Int = 0
     @Published var routes: [AppRoute] = []
 
-    /// Persistent player overlay state so playback continues seamlessly when
-    /// minimizing (`∨`), switching tabs, or locking the iPhone screen.
+    /// Single-instance persistent player host state: once mounted on first playback,
+    /// the single `WKWebView` / `YT.Player` instance is reused for the entire app session.
     @Published var activePlayerVideo: VideoItem? = nil
     @Published var activePlayerQueue: [VideoItem] = []
+    @Published var isPlayerPresented: Bool = false
     @Published var isPlayerMinimized: Bool = false
-    @Published var playerSessionID: UUID = UUID()
 
     // MARK: - Navigation Actions
 
@@ -40,7 +40,7 @@ final class AppRouter: ObservableObject {
         routes.removeLast()
     }
 
-    // MARK: - Persistent Player Presentation
+    // MARK: - Single-Instance Player Presentation
 
     @MainActor
     func presentPlayer(video: VideoItem, queue: [VideoItem] = []) {
@@ -49,19 +49,20 @@ final class AppRouter: ObservableObject {
             PlaybackService.shared.updateQueue(queue)
         }
         if activePlayerVideo == nil {
-            playerSessionID = UUID()
             activePlayerVideo = video
             isPlayerMinimized = false
+            isPlayerPresented = true
         } else {
             activePlayerVideo = video
             isPlayerMinimized = false
+            isPlayerPresented = true
             PlaybackService.shared.onSelectVideoFromApp?(video, queue)
         }
     }
 
     @MainActor
     func minimizePlayer() {
-        guard activePlayerVideo != nil else { return }
+        guard isPlayerPresented else { return }
         withAnimation(.spring(response: 0.36, dampingFraction: 0.86)) {
             isPlayerMinimized = true
         }
@@ -71,6 +72,7 @@ final class AppRouter: ObservableObject {
     func expandPlayer() {
         guard activePlayerVideo != nil else { return }
         withAnimation(.spring(response: 0.36, dampingFraction: 0.86)) {
+            isPlayerPresented = true
             isPlayerMinimized = false
         }
     }
@@ -79,7 +81,7 @@ final class AppRouter: ObservableObject {
     func closePlayer() {
         withAnimation(.easeOut(duration: 0.2)) {
             isPlayerMinimized = false
-            activePlayerVideo = nil
+            isPlayerPresented = false
         }
     }
 }

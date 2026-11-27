@@ -364,23 +364,23 @@
       </div>
     </div>
 
-    <!-- App Header -->
-    <div class="h-11 border-b app-border flex items-center justify-between px-4 shrink-0 app-bg z-30" id="appHeader">
+    <!-- App Header (Image 3: Red YouTube Play Logo + YT Player + Bell) -->
+    <div class="h-12 border-b app-border flex items-center justify-between px-4 shrink-0 app-bg z-30" id="appHeader">
       <div class="flex items-center gap-2 cursor-pointer" onclick="switchTab('home')">
-        <div class="w-6 h-6 bg-gradient-to-br from-red-500 to-red-700 rounded-lg flex items-center justify-center shadow-sm">
-          <svg class="w-3.5 h-3.5 text-white fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        <div class="w-7 h-5 bg-[#dc2626] rounded-md flex items-center justify-center shadow-sm">
+          <svg class="w-3 h-3 text-white fill-current ml-0.5" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
         </div>
-        <span class="font-semibold tracking-tight text-[15px] app-text">YT Player</span>
+        <span class="font-bold tracking-tight text-[16px] app-text">YT Player</span>
       </div>
-      <div class="flex items-center gap-1 app-muted">
-        <button onclick="toggleWideMode()" title="Mở rộng / Thu gọn khung hình" class="p-1.5 hover:opacity-80 rounded-lg">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+      <div class="flex items-center gap-2 app-muted">
+        <button onclick="switchTab('search', true)" title="Tìm kiếm" class="p-1.5 hover:text-white rounded-lg transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
         </button>
-        <button onclick="toggleTheme()" title="Đổi giao diện Sáng/Tối" class="p-1.5 hover:opacity-80 rounded-lg">
+        <button onclick="toggleTheme()" title="Đổi giao diện Sáng/Tối" class="p-1.5 hover:text-white rounded-lg transition">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
         </button>
-        <button onclick="switchTab('search', true)" title="Tìm kiếm" class="p-1.5 hover:opacity-80 rounded-lg">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <button class="p-1.5 hover:text-white rounded-lg transition" title="Thông báo">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
         </button>
       </div>
     </div>
@@ -388,14 +388,15 @@
     <!-- Main Scrollable Viewport -->
     <div class="flex-1 overflow-y-auto no-scrollbar app-bg relative" id="mainContainer">
 
-      <!-- TAB 1: HOME -->
-      <div id="tab-home" class="p-3 space-y-3 pb-20">
-        <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1 text-[11px]" id="homeCategories">
-          <button onclick="selectHomeCategory('trending', this)" class="home-cat-btn px-3 py-1 bg-red-600 text-white font-medium rounded-full shrink-0 transition">Thịnh hành VN</button>
-          <button onclick="selectHomeCategory('Quốc Thiên SKYNote Live Concert', this)" class="home-cat-btn px-3 py-1 app-surface-2 border app-border app-text rounded-full shrink-0 transition">Live Concert</button>
-          <button onclick="selectHomeCategory('Nhạc trẻ Việt Nam mới nhất', this)" class="home-cat-btn px-3 py-1 app-surface-2 border app-border app-text rounded-full shrink-0 transition">Nhạc Việt</button>
-          <button onclick="selectHomeCategory('Lofi chill hip hop beats', this)" class="home-cat-btn px-3 py-1 app-surface-2 border app-border app-text rounded-full shrink-0 transition">Lofi Chill</button>
-          <button onclick="selectHomeCategory('US UK Pop Hits Official MV', this)" class="home-cat-btn px-3 py-1 app-surface-2 border app-border app-text rounded-full shrink-0 transition">US-UK</button>
+      <!-- TAB 1: HOME (Image 3: Nghe tiếp horizontal scroll + Đề xuất cho bạn vertical feed) -->
+      <div id="tab-home" class="p-3 space-y-4 pb-24">
+        <!-- Section 1: Nghe tiếp -->
+        <div class="space-y-2.5">
+          <div class="flex items-center gap-1.5 px-0.5">
+            <span class="font-bold text-[16px] text-white">Nghe tiếp</span>
+            <svg class="w-3.5 h-3.5 text-zinc-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div id="homeContinueListening" class="flex gap-3 overflow-x-auto no-scrollbar py-1"></div>
         </div>
 
         <div id="homeApiBanner" class="hidden rounded-xl p-2.5 border border-amber-500/40 bg-amber-500/10 text-[11px] space-y-1">
@@ -406,12 +407,14 @@
           <p id="homeApiBannerText" class="app-muted leading-snug text-[10px]"></p>
         </div>
 
-        <div class="flex items-center justify-between px-0.5">
-          <span class="font-bold text-xs tracking-wide uppercase app-text" id="homeSectionTitle">Khám phá thịnh hành</span>
-          <button onclick="loadHomeFeed(true)" class="text-[11px] text-red-400 font-medium hover:underline">Làm mới</button>
+        <!-- Section 2: Đề xuất cho bạn -->
+        <div class="space-y-3 pt-1">
+          <div class="flex items-center justify-between px-0.5">
+            <span class="font-bold text-[16px] text-white" id="homeSectionTitle">Đề xuất cho bạn</span>
+            <button onclick="loadHomeFeed(true)" class="text-[11px] text-red-500 font-medium hover:underline">Làm mới</button>
+          </div>
+          <div id="homeFeedList" class="space-y-4"></div>
         </div>
-
-        <div id="homeFeedList" class="space-y-4"></div>
       </div>
 
       <!-- TAB 2: SEARCH -->
@@ -438,21 +441,67 @@
         <div id="searchResults" class="space-y-2.5 pt-0.5"></div>
       </div>
 
-      <!-- TAB 3: LIBRARY (Favorites | Playlists | History) -->
-      <div id="tab-library" class="p-3 space-y-3 pb-20 hidden">
-        <div class="grid grid-cols-3 rounded-xl app-surface-2 p-1 text-[11px] font-medium border app-border gap-1">
-          <button onclick="setLibraryTab('fav')" id="btnLibFav" class="py-1.5 rounded-lg bg-red-600 text-white transition">Yêu thích (<span id="favCount">0</span>)</button>
-          <button onclick="setLibraryTab('pl')" id="btnLibPl" class="py-1.5 rounded-lg app-muted transition">Playlist (<span id="plCount">0</span>)</button>
-          <button onclick="setLibraryTab('hist')" id="btnLibHist" class="py-1.5 rounded-lg app-muted transition">Lịch sử (<span id="histCount">0</span>)</button>
+      <!-- TAB 3: LIBRARY (Image 2: 3-row Group Card + Playlist list) -->
+      <div id="tab-library" class="p-3.5 space-y-5 pb-24 hidden">
+        <h2 class="text-2xl font-bold text-white px-0.5">Thư viện</h2>
+
+        <!-- Top Card with 3 Sections (Favorites, History, Playlists) -->
+        <div class="rounded-2xl bg-[#1c1c1e] border border-white/10 divide-y divide-white/10 overflow-hidden shadow-lg">
+          <div onclick="showLibSection('fav')" class="p-3.5 flex items-center justify-between cursor-pointer hover:bg-white/[0.04] transition">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-[#3a1214] flex items-center justify-center text-red-500">
+                <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+              </div>
+              <div>
+                <p class="text-[14px] font-semibold text-white">Bài hát yêu thích</p>
+                <p class="text-[12px] text-zinc-400"><span id="favCount">0</span> bài hát</p>
+              </div>
+            </div>
+            <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </div>
+
+          <div onclick="showLibSection('hist')" class="p-3.5 flex items-center justify-between cursor-pointer hover:bg-white/[0.04] transition">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-[#3a1214] flex items-center justify-center text-red-500">
+                <svg class="w-5 h-5 fill-none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </div>
+              <div>
+                <p class="text-[14px] font-semibold text-white">Xem gần đây</p>
+                <p class="text-[12px] text-zinc-400"><span id="histCount">0</span> video</p>
+              </div>
+            </div>
+            <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </div>
+
+          <div onclick="showLibSection('pl')" class="p-3.5 flex items-center justify-between cursor-pointer hover:bg-white/[0.04] transition">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-[#3a1214] flex items-center justify-center text-red-500">
+                <svg class="w-5 h-5 fill-none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/></svg>
+              </div>
+              <div>
+                <p class="text-[14px] font-semibold text-white">Playlist của tôi</p>
+                <p class="text-[12px] text-zinc-400"><span id="plCount">0</span> playlist</p>
+              </div>
+            </div>
+            <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </div>
         </div>
 
-        <div id="libHeaderActions" class="hidden flex justify-between items-center">
-          <span id="libSubLabel" class="text-[11px] app-muted"></span>
-          <button onclick="clearWatchHistory()" id="btnClearHist" class="hidden text-[11px] text-red-400 hover:underline font-medium">Xóa toàn bộ lịch sử</button>
-          <button onclick="promptCreateNewPlaylist()" id="btnNewPlLib" class="hidden text-[11px] text-red-400 hover:underline font-medium">+ Tạo Playlist mới</button>
-        </div>
+        <!-- Playlist Section Header with + Tạo playlist (Image 2) -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between px-0.5">
+            <span class="text-[18px] font-bold text-white">Playlist</span>
+            <button onclick="promptCreateNewPlaylist()" class="text-sm font-semibold text-red-500 hover:text-red-400 transition">+ Tạo playlist</button>
+          </div>
 
-        <div id="libraryList" class="space-y-2 pt-0.5"></div>
+          <div id="libHeaderActions" class="hidden flex justify-between items-center py-1">
+            <span id="libSubLabel" class="text-xs text-zinc-400"></span>
+            <button onclick="clearWatchHistory()" id="btnClearHist" class="hidden text-xs text-red-400 hover:underline font-medium">Xóa toàn bộ lịch sử</button>
+            <button onclick="promptCreateNewPlaylist()" id="btnNewPlLib" class="hidden text-xs text-red-400 hover:underline font-medium">+ Tạo Playlist mới</button>
+          </div>
+
+          <div id="libraryList" class="space-y-3 pt-0.5"></div>
+        </div>
       </div>
 
       <!-- TAB 4: SETTINGS (v2.1.0 Spec) -->
@@ -747,19 +796,27 @@
           </button>
         </div>
 
-        <!-- Full-width Volume Slider (left → right, same width as the timeline) -->
-        <div class="my-1">
-          <div class="flex items-center gap-2.5">
-            <button onclick="toggleMute()" id="btnMute" title="Tắt / bật tiếng" class="text-zinc-400 hover:text-white shrink-0">
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M7 9v6h4l5 5V4l-5 5H7z"/></svg>
-            </button>
-            <input type="range" id="musicVolumeSlider" min="0" max="100" value="100"
-              oninput="onVolumeChange(this.value)"
-              class="flex-1 w-full yt-range vol-range"
-              style="background: linear-gradient(to right, #ffffff 100%, rgba(255,255,255,0.16) 100%); height: 3px; border-radius: 999px;">
-            <svg class="w-4 h-4 text-zinc-400 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
-          </div>
-          <p id="iosVolumeHint" class="hidden text-[10px] text-zinc-500 text-center mt-1">Trên iPhone: dùng phím âm lượng bên hông máy để chỉnh to/nhỏ (kéo về 0 để tắt tiếng)</p>
+        <!-- 4 Quick Action Buttons (Image 4: Hẹn giờ, Danh sách, Chia sẻ, Tự động phát) -->
+        <div class="grid grid-cols-4 gap-2 my-1 pt-1">
+          <button onclick="toggleSleepTimerQuick()" id="btnQuickTimer" class="flex flex-col items-center justify-center p-2 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 transition">
+            <svg class="w-5 h-5 text-white mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span id="quickTimerLabel" class="text-[10px] text-zinc-300 font-medium">Hẹn giờ</span>
+          </button>
+
+          <button onclick="openPlaylistModal()" class="flex flex-col items-center justify-center p-2 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 transition">
+            <svg class="w-5 h-5 text-white mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h7"/></svg>
+            <span class="text-[10px] text-zinc-300 font-medium">Danh sách</span>
+          </button>
+
+          <button onclick="copyCurrentVideoLink()" class="flex flex-col items-center justify-center p-2 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 transition">
+            <svg class="w-5 h-5 text-white mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+            <span id="quickShareLabel" class="text-[10px] text-zinc-300 font-medium">Chia sẻ</span>
+          </button>
+
+          <button onclick="toggleAutoplayNextQuick()" id="btnQuickAutoplay" class="flex flex-col items-center justify-center p-2 rounded-2xl bg-[#3a1214] border border-red-500/30 text-red-500 transition">
+            <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span id="quickAutoplayLabel" class="text-[10px] font-medium text-red-400">Tự động phát</span>
+          </button>
         </div>
 
         <!-- Sliding Drawer Pill: [ ☰ Danh sách phát tiếp theo (Up Next) ^ ] -->
@@ -1039,6 +1096,8 @@
 
     // Player, Zoom, Transport & Sleep Timer
     let ytPlayerInstance = null;
+    let loadedPlayerVideoId = null;
+    let lastMediaSessionMetaKey = '';
     let ytApiReady = false;
     let pendingMountVideoId = null;
     let isPlayerPlaying = false;
@@ -1394,25 +1453,56 @@
 
     function renderHomeCards(list) {
       const listEl = document.getElementById('homeFeedList');
+      const continueEl = document.getElementById('homeContinueListening');
+
+      // 1. Render Nghe tiếp (horizontal scroll - Image 3)
+      if (continueEl) {
+        const histList = (history && history.length > 0) ? history.slice(0, 8) : (DEMO_CATALOG.slice(0, 4));
+        continueEl.innerHTML = histList.map(v => {
+          const isActivelyPlaying = isPlayerPlaying && currentVideoId === v.id;
+          const playOverlay = isActivelyPlaying ? `
+            <div class="absolute inset-0 flex items-center justify-center">
+              <div class="w-10 h-10 rounded-full bg-black/75 border border-white/20 flex items-center justify-center text-white shadow-xl">
+                <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+              </div>
+            </div>
+          ` : '';
+          return `
+            <div onclick="openPlayerById('${escapeHTML(v.id)}')" class="shrink-0 w-[146px] yt-card-anim cursor-pointer space-y-2">
+              <div class="relative w-[146px] h-[92px] rounded-2xl overflow-hidden bg-zinc-900 border border-white/10">
+                <img src="${escapeHTML(v.thumb)}" loading="lazy" class="w-full h-full object-cover" alt="">
+                ${playOverlay}
+              </div>
+              <div class="px-0.5">
+                <h4 class="text-xs font-semibold text-white line-clamp-1 leading-snug">${escapeHTML(v.title)}</h4>
+                <p class="text-[11px] text-zinc-400 truncate mt-0.5">${escapeHTML(v.channel)}</p>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // 2. Render Đề xuất cho bạn (Vertical List with 16:9 thumbnail, 16px radius, duration badge & 3-dots menu)
       if (!list || list.length === 0) {
         listEl.innerHTML = `<div class="py-10 text-center text-xs app-muted">Không có video nào để hiển thị.</div>`;
         return;
       }
 
       listEl.innerHTML = list.map(v => {
-        const initials = escapeHTML((v.channel || 'YT').substring(0, 2).toUpperCase());
         return `
           <div onclick="openPlayerById('${escapeHTML(v.id)}')" class="yt-card-anim cursor-pointer group space-y-2">
-            <div class="relative w-full aspect-video rounded-2xl overflow-hidden bg-zinc-900 border app-border">
+            <div class="relative w-full aspect-video rounded-2xl overflow-hidden bg-zinc-900 border border-white/10">
               <img src="${escapeHTML(v.thumb)}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" alt="">
-              ${v.duration ? `<span class="absolute bottom-2 right-2 bg-black/85 text-white px-1.5 py-0.5 rounded text-[10px] font-semibold">${escapeHTML(v.duration)}</span>` : ''}
+              ${v.duration ? `<span class="absolute bottom-2.5 right-2.5 bg-black/85 text-white px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide">${escapeHTML(v.duration)}</span>` : ''}
             </div>
-            <div class="flex gap-2.5 px-0.5">
-              <div class="w-8 h-8 rounded-full bg-gradient-to-br from-red-600 to-red-800 text-white shrink-0 flex items-center justify-center font-bold text-[11px]">${initials}</div>
+            <div class="flex items-start justify-between gap-3 px-1">
               <div class="flex-1 min-w-0">
-                <h3 class="text-xs font-semibold leading-snug line-clamp-2 app-text">${escapeHTML(v.title)}</h3>
-                <p class="text-[11px] app-muted mt-0.5 truncate">${escapeHTML(v.channel)}${v.views ? ` • ${escapeHTML(v.views)}` : ''}</p>
+                <h3 class="text-sm font-semibold leading-snug line-clamp-2 text-white">${escapeHTML(v.title)}</h3>
+                <p class="text-[11px] text-zinc-400 mt-1 truncate">${escapeHTML(v.channel)}${v.views ? ` • ${escapeHTML(v.views)}` : ''}</p>
               </div>
+              <button onclick="event.stopPropagation(); openPlaylistModal();" title="Tùy chọn" class="p-1.5 text-zinc-400 hover:text-white shrink-0">
+                <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+              </button>
             </div>
           </div>
         `;
@@ -1628,9 +1718,10 @@
         btnMusic.classList.replace('text-zinc-400', 'text-white');
         btnVideo.classList.replace('text-white', 'text-zinc-400');
 
+        // Keep minimum 160x90 surface so WebKit never reallocates decoder buffers across mode/lifecycle switches
         videoBox.style.position = 'absolute';
-        videoBox.style.width = '1px';
-        videoBox.style.height = '1px';
+        videoBox.style.width = '160px';
+        videoBox.style.height = '90px';
         videoBox.style.opacity = '0.01';
         videoBox.style.pointerEvents = 'none';
 
@@ -1660,6 +1751,11 @@
     function openPlayerById(videoId, preserveMode = false) {
       const v = videoRegistry.get(videoId);
       if (!v) return;
+      const isSameActiveTrack = (
+        currentVideoId === videoId &&
+        loadedPlayerVideoId === videoId &&
+        (ytPlayerInstance !== null || document.getElementById('fallbackIframe') !== null)
+      );
       currentVideoId = videoId;
       if (!preserveMode) {
         playerMode = defaultOpenMode;
@@ -1691,22 +1787,28 @@
       document.getElementById('musicAlbumArt').src = v.thumb;
       document.getElementById('musicArtGlowHalo').src = v.thumb;
       document.getElementById('ambientBgImg').src = v.thumb;
-      document.getElementById('musicCurrentTime').innerText = '0:00';
-      document.getElementById('musicDurationTime').innerText = (v.duration && v.duration.includes(':')) ? v.duration : '0:00';
-      updateSeekBarFill(0);
+      if (!isSameActiveTrack) {
+        document.getElementById('musicCurrentTime').innerText = '0:00';
+        document.getElementById('musicDurationTime').innerText = (v.duration && v.duration.includes(':')) ? v.duration : '0:00';
+        updateSeekBarFill(0);
+        document.getElementById('miniProgressBar').style.width = '0%';
+      }
       updateMediaSessionMetadata(v);
 
       // Mini Player metadata
       document.getElementById('miniThumb').src = v.thumb;
       document.getElementById('miniTitle').innerText = v.title;
       document.getElementById('miniChannel').innerText = v.channel;
-      document.getElementById('miniProgressBar').style.width = '0%';
       setMiniBarVisible(false);
 
       document.getElementById('fileProtocolNotice').classList.toggle('hidden', window.location.protocol !== 'file:');
 
       setPlayerMode(playerMode);
-      mountYouTubeVideo(v.id);
+      if (isSameActiveTrack) {
+        if (!isPlayerPlaying) playActivePlayer();
+      } else {
+        mountYouTubeVideo(v.id);
+      }
       updateFavButton();
       renderUpNext(v.id);
 
@@ -1726,62 +1828,39 @@
     }
 
     // =========================================================================
-    // Background / Lock-screen playback engine (iOS AudioSession Keep-Alive + MediaSession)
+    // Single-instance Lifecycle, MediaSession & Transition Diagnostics Engine
     // =========================================================================
     const IS_IOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || '') ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    let wasPlayingBeforeHidden = false;
-    let lastHiddenTimestamp = 0;
+    const bootPerfTimestamp = performance.now();
+    let lastLifecyclePerfTimestamp = 0;
     let userPausedManually = false;
-    let keepAliveAudio = null;
+    window.__ytDiagLogs = [];
 
-    // Synthesize a tiny 1-second silent PCM WAV so the top-level document holds an active
-    // iOS AVAudioSession & MPNowPlayingInfoCenter (preventing Control Center "Không phát")
-    function getKeepAliveAudio() {
-      if (keepAliveAudio) return keepAliveAudio;
-      try {
-        const sampleRate = 8000;
-        const numSamples = sampleRate;
-        const buffer = new ArrayBuffer(44 + numSamples * 2);
-        const view = new DataView(buffer);
-        const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
-        writeStr(0, 'RIFF');
-        view.setUint32(4, 36 + numSamples * 2, true);
-        writeStr(8, 'WAVE');
-        writeStr(12, 'fmt ');
-        view.setUint32(16, 16, true);
-        view.setUint16(20, 1, true);
-        view.setUint16(22, 1, true);
-        view.setUint32(24, sampleRate, true);
-        view.setUint32(28, sampleRate * 2, true);
-        view.setUint16(32, 2, true);
-        view.setUint16(34, 16, true);
-        writeStr(36, 'data');
-        view.setUint32(40, numSamples * 2, true);
-        // Imperceptible non-zero PCM sample so iOS never strips the audio session as digital zero
-        for (let i = 0; i < numSamples; i++) view.setInt16(44 + i * 2, (i % 2 === 0) ? 1 : -1, true);
-
-        const blob = new Blob([buffer], { type: 'audio/wav' });
-        keepAliveAudio = new Audio(URL.createObjectURL(blob));
-        keepAliveAudio.loop = true;
-        keepAliveAudio.volume = 0.01;
-        keepAliveAudio.setAttribute('playsinline', 'true');
-      } catch (_) {}
-      return keepAliveAudio;
-    }
-
-    function syncKeepAliveAudio(shouldPlay) {
-      const a = getKeepAliveAudio();
-      if (!a) return;
-      if (shouldPlay && bgPlayEnabled) {
-        a.play().catch(() => {});
-      } else {
-        try { a.pause(); } catch (_) {}
+    function logPlayerDiag(source, eventName, details = '') {
+      const now = performance.now();
+      const elapsedMs = Math.round(now - bootPerfTimestamp);
+      const dtTransition = lastLifecyclePerfTimestamp > 0
+        ? Math.round(now - lastLifecyclePerfTimestamp)
+        : -1;
+      const phaseTag = (dtTransition >= 0 && dtTransition <= 3000)
+        ? `dt_transition=${dtTransition}ms`
+        : 'steady_state';
+      const line = `[YTPlayerDiag] [+${elapsedMs}ms] [${source}] ${eventName} (${phaseTag})${details ? ' | ' + details : ''}`;
+      window.__ytDiagLogs.push(line);
+      if (window.__ytDiagLogs.length > 120) {
+        window.__ytDiagLogs.shift();
+      }
+      if (typeof console !== 'undefined' && console.info) {
+        console.info(line);
       }
     }
 
     function updateMediaSessionMetadata(v) {
-      if (!('mediaSession' in navigator) || !v) return;
+      if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined' || !v) return;
+      const nextMetaKey = `${v.id}|${v.title || ''}|${v.channel || ''}`;
+      if (nextMetaKey === lastMediaSessionMetaKey) return;
+      lastMediaSessionMetaKey = nextMetaKey;
       try {
         const parts = (v.title || '').split('|').map(s => s.trim()).filter(Boolean);
         navigator.mediaSession.metadata = new MediaMetadata({
@@ -1796,11 +1875,49 @@
       } catch (_) {}
     }
 
+    function syncMediaSessionPositionState() {
+      if (!('mediaSession' in navigator) || typeof navigator.mediaSession.setPositionState !== 'function') return;
+      if (!ytPlayerInstance || typeof ytPlayerInstance.getDuration !== 'function') return;
+      try {
+        const dur = ytPlayerInstance.getDuration() || 0;
+        const cur = ytPlayerInstance.getCurrentTime() || 0;
+        if (dur > 0) {
+          navigator.mediaSession.setPositionState({
+            duration: dur,
+            playbackRate: isPlayerPlaying ? 1 : 0,
+            position: Math.min(dur, Math.max(0, cur))
+          });
+        }
+      } catch (_) {}
+    }
+
     function applyPreferredQuality() {
       if (!ytPlayerInstance || typeof ytPlayerInstance.setPlaybackQuality !== 'function') return;
+      if (!playbackQualityPref || playbackQualityPref === 'default') return;
       try {
-        ytPlayerInstance.setPlaybackQuality(playbackQualityPref || 'default');
+        ytPlayerInstance.setPlaybackQuality(playbackQualityPref);
       } catch (_) {}
+    }
+
+    function pauseForBackgroundPolicy() {
+      // System/setting policy pause when Background Play is OFF (does NOT mark userPausedManually = true)
+      logPlayerDiag('app_policy', 'pauseForBackgroundPolicy', 'bgPlayEnabled=false');
+      setPlayingUIState(false);
+      stopProgressPolling();
+      if ('mediaSession' in navigator) {
+        try { navigator.mediaSession.playbackState = 'paused'; } catch (_) {}
+      }
+      if (ytPlayerInstance && typeof ytPlayerInstance.getPlayerState === 'function') {
+        const st = ytPlayerInstance.getPlayerState();
+        if (st === 1 || st === 3) {
+          ytPlayerInstance.pauseVideo();
+        }
+        return;
+      }
+      const iframe = document.getElementById('fallbackIframe');
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+      }
     }
 
     (function setupBackgroundPlayback() {
@@ -1813,6 +1930,7 @@
           seekto: (details) => {
             if (details && typeof details.seekTime === 'number' && ytPlayerInstance && typeof ytPlayerInstance.seekTo === 'function') {
               ytPlayerInstance.seekTo(details.seekTime, true);
+              syncMediaSessionPositionState();
             }
           }
         };
@@ -1821,32 +1939,45 @@
         });
       }
 
+      // Passive visibility & page lifecycle handling: ZERO redundant playVideo()/seekTo() timers on transitions
       document.addEventListener('visibilitychange', () => {
+        lastLifecyclePerfTimestamp = performance.now();
+        const st = (ytPlayerInstance && typeof ytPlayerInstance.getPlayerState === 'function')
+          ? ytPlayerInstance.getPlayerState()
+          : -99;
+        logPlayerDiag(
+          'dom_lifecycle',
+          `visibilitychange:${document.visibilityState}`,
+          `ytState=${st}, isPlaying=${isPlayerPlaying}, userPaused=${userPausedManually}, bgEnabled=${bgPlayEnabled}`
+        );
+
         if (document.visibilityState === 'hidden') {
-          lastHiddenTimestamp = Date.now();
-          wasPlayingBeforeHidden = isPlayerPlaying && !userPausedManually;
+          stopProgressPolling();
           if (!bgPlayEnabled && isPlayerPlaying) {
-            pauseActivePlayer();
-          } else if (bgPlayEnabled && wasPlayingBeforeHidden) {
-            syncKeepAliveAudio(true);
-            [250, 750, 1500].forEach((delay) => {
-              setTimeout(() => {
-                if (document.visibilityState === 'hidden' && bgPlayEnabled && wasPlayingBeforeHidden && !userPausedManually) {
-                  if (ytPlayerInstance && typeof ytPlayerInstance.playVideo === 'function') {
-                    ytPlayerInstance.playVideo();
-                  }
-                }
-              }, delay);
-            });
+            pauseForBackgroundPolicy();
           }
-        } else if (wasPlayingBeforeHidden && bgPlayEnabled && !userPausedManually) {
-          setTimeout(() => {
-            const state = ytPlayerInstance && typeof ytPlayerInstance.getPlayerState === 'function'
-              ? ytPlayerInstance.getPlayerState() : null;
-            if (state !== 1) playActivePlayer();
-          }, 250);
+        } else if (document.visibilityState === 'visible') {
+          refreshProgressSnapshot();
+          if (isPlayerPlaying && !userPausedManually) {
+            startProgressPolling();
+          }
         }
-      });
+      }, { passive: true });
+
+      window.addEventListener('pagehide', (ev) => {
+        lastLifecyclePerfTimestamp = performance.now();
+        logPlayerDiag('dom_lifecycle', 'pagehide', `persisted=${Boolean(ev && ev.persisted)}`);
+        stopProgressPolling();
+      }, { passive: true });
+
+      window.addEventListener('pageshow', (ev) => {
+        lastLifecyclePerfTimestamp = performance.now();
+        logPlayerDiag('dom_lifecycle', 'pageshow', `persisted=${Boolean(ev && ev.persisted)}, userPaused=${userPausedManually}`);
+        refreshProgressSnapshot();
+        if (document.visibilityState === 'visible' && isPlayerPlaying && !userPausedManually) {
+          startProgressPolling();
+        }
+      }, { passive: true });
 
       if (IS_IOS) {
         const hint = document.getElementById('iosVolumeHint');
@@ -1863,12 +1994,29 @@
           return;
         }
         if (ytPlayerInstance && typeof ytPlayerInstance.loadVideoById === 'function') {
-          ytPlayerInstance.loadVideoById(videoId);
+          userPausedManually = false;
+          if (loadedPlayerVideoId === videoId) {
+            const st = typeof ytPlayerInstance.getPlayerState === 'function' ? ytPlayerInstance.getPlayerState() : -1;
+            if (st === 0 && typeof ytPlayerInstance.seekTo === 'function') {
+              ytPlayerInstance.seekTo(0, true);
+            }
+            if (st !== 1 && st !== 3 && typeof ytPlayerInstance.playVideo === 'function') {
+              logPlayerDiag('app_command', 'playVideo:reuseLoadedTrack', `videoId=${videoId}, prevState=${st}`);
+              ytPlayerInstance.playVideo();
+            }
+          } else {
+            loadedPlayerVideoId = videoId;
+            logPlayerDiag('app_command', 'loadVideoById', `videoId=${videoId}`);
+            ytPlayerInstance.loadVideoById(videoId);
+            applyPreferredQuality();
+          }
           setPlayingUIState(true);
           startProgressPolling();
           return;
         }
 
+        loadedPlayerVideoId = videoId;
+        logPlayerDiag('app_command', 'createSingletonYTPlayer', `videoId=${videoId}`);
         document.getElementById('ytPlayerMount').innerHTML = '<div id="ytApiInner"></div>';
         ytPlayerInstance = new YT.Player('ytApiInner', {
           width: '100%',
@@ -1884,36 +2032,48 @@
           events: {
             onReady: () => {
               userPausedManually = false;
+              logPlayerDiag('yt_iframe', 'onReady', `videoId=${loadedPlayerVideoId}`);
               applyPreferredQuality();
               setPlayingUIState(true);
-              syncKeepAliveAudio(true);
               startProgressPolling();
             },
             onStateChange: (ev) => {
+              const cur = (ytPlayerInstance && typeof ytPlayerInstance.getCurrentTime === 'function')
+                ? (ytPlayerInstance.getCurrentTime() || 0).toFixed(2)
+                : '0.00';
+              logPlayerDiag('yt_iframe', `onStateChange:${ev.data}`, `time=${cur}s, userPaused=${userPausedManually}`);
+
               if (ev.data === YT.PlayerState.PLAYING) {
-                applyPreferredQuality();
+                userPausedManually = false;
                 setPlayingUIState(true);
-                syncKeepAliveAudio(true);
-                if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
-                startProgressPolling();
-              } else if (ev.data === YT.PlayerState.PAUSED) {
-                // If system auto-paused on background transition while Background Play is ON, keep session & retry
-                if (document.visibilityState === 'hidden' && bgPlayEnabled && !userPausedManually && (Date.now() - lastHiddenTimestamp < 3000)) {
-                  setTimeout(() => {
-                    if (ytPlayerInstance && typeof ytPlayerInstance.playVideo === 'function') ytPlayerInstance.playVideo();
-                  }, 200);
-                  return;
+                if ('mediaSession' in navigator) {
+                  try { navigator.mediaSession.playbackState = 'playing'; } catch (_) {}
                 }
+                syncMediaSessionPositionState();
+                if (document.visibilityState === 'visible') {
+                  startProgressPolling();
+                }
+              } else if (ev.data === YT.PlayerState.PAUSED) {
                 setPlayingUIState(false);
-                if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+                stopProgressPolling();
+                if ('mediaSession' in navigator) {
+                  try { navigator.mediaSession.playbackState = 'paused'; } catch (_) {}
+                }
+                syncMediaSessionPositionState();
               } else if (ev.data === YT.PlayerState.ENDED) {
+                stopProgressPolling();
                 handleTrackEnded();
               }
             }
           }
         });
       } else {
+        if (ytPlayerInstance && typeof ytPlayerInstance.pauseVideo === 'function') {
+          try { ytPlayerInstance.pauseVideo(); } catch (_) {}
+        }
         ytPlayerInstance = null;
+        loadedPlayerVideoId = videoId;
+        userPausedManually = false;
         setPlayingUIState(true);
         document.getElementById('ytPlayerMount').innerHTML = `
           <iframe id="fallbackIframe" class="w-full h-full border-0"
@@ -1925,33 +2085,38 @@
       }
     }
 
-    function startProgressPolling() {
-      if (progressPollTimer) clearInterval(progressPollTimer);
-      progressPollTimer = setInterval(() => {
-        if (!ytPlayerInstance || typeof ytPlayerInstance.getCurrentTime !== 'function') return;
-        const cur = ytPlayerInstance.getCurrentTime() || 0;
-        const dur = ytPlayerInstance.getDuration() || 0;
-        if (dur > 0) {
-          const pct = Math.min(100, Math.max(0, (cur / dur) * 100));
-          document.getElementById('miniProgressBar').style.width = `${pct}%`;
-          if (!isSeeking) {
-            const slider = document.getElementById('musicSeekSlider');
-            slider.value = pct;
-            updateSeekBarFill(pct);
-            document.getElementById('musicCurrentTime').innerText = formatSeconds(cur);
-          }
-          document.getElementById('musicDurationTime').innerText = formatSeconds(dur);
-          if ('mediaSession' in navigator && typeof navigator.mediaSession.setPositionState === 'function') {
-            try {
-              navigator.mediaSession.setPositionState({
-                duration: dur,
-                playbackRate: 1,
-                position: Math.min(dur, Math.max(0, cur))
-              });
-            } catch (_) {}
-          }
+    function refreshProgressSnapshot() {
+      if (!ytPlayerInstance || typeof ytPlayerInstance.getCurrentTime !== 'function') return;
+      const cur = ytPlayerInstance.getCurrentTime() || 0;
+      const dur = ytPlayerInstance.getDuration() || 0;
+      if (dur > 0) {
+        const pct = Math.min(100, Math.max(0, (cur / dur) * 100));
+        document.getElementById('miniProgressBar').style.width = `${pct}%`;
+        if (!isSeeking) {
+          const slider = document.getElementById('musicSeekSlider');
+          slider.value = pct;
+          updateSeekBarFill(pct);
+          document.getElementById('musicCurrentTime').innerText = formatSeconds(cur);
         }
-      }, 500);
+        document.getElementById('musicDurationTime').innerText = formatSeconds(dur);
+      }
+    }
+
+    function stopProgressPolling() {
+      if (progressPollTimer) {
+        clearInterval(progressPollTimer);
+        progressPollTimer = null;
+      }
+    }
+
+    function startProgressPolling() {
+      stopProgressPolling();
+      if (document.visibilityState === 'hidden') return;
+      refreshProgressSnapshot();
+      progressPollTimer = setInterval(() => {
+        if (document.visibilityState === 'hidden' || !isPlayerPlaying) return;
+        refreshProgressSnapshot();
+      }, 1000);
     }
 
     function updateSeekBarFill(pct) {
@@ -1973,7 +2138,12 @@
       const pct = parseFloat(pctVal) || 0;
       if (ytPlayerInstance && typeof ytPlayerInstance.getDuration === 'function') {
         const dur = ytPlayerInstance.getDuration() || 0;
-        if (dur > 0) ytPlayerInstance.seekTo((pct / 100) * dur, true);
+        if (dur > 0) {
+          const targetSec = (pct / 100) * dur;
+          logPlayerDiag('app_command', 'seekTo', `to=${targetSec.toFixed(1)}s`);
+          ytPlayerInstance.seekTo(targetSec, true);
+          syncMediaSessionPositionState();
+        }
       }
       isSeeking = false;
     }
@@ -2026,10 +2196,16 @@
     function pauseActivePlayer() {
       userPausedManually = true;
       setPlayingUIState(false);
-      syncKeepAliveAudio(false);
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+      stopProgressPolling();
+      if ('mediaSession' in navigator) {
+        try { navigator.mediaSession.playbackState = 'paused'; } catch (_) {}
+      }
       if (ytPlayerInstance && typeof ytPlayerInstance.pauseVideo === 'function') {
-        ytPlayerInstance.pauseVideo();
+        const st = typeof ytPlayerInstance.getPlayerState === 'function' ? ytPlayerInstance.getPlayerState() : -1;
+        if (st !== 2 && st !== 0 && st !== 5) {
+          logPlayerDiag('app_command', 'pauseVideo:user');
+          ytPlayerInstance.pauseVideo();
+        }
         return;
       }
       const iframe = document.getElementById('fallbackIframe');
@@ -2041,10 +2217,18 @@
     function playActivePlayer() {
       userPausedManually = false;
       setPlayingUIState(true);
-      syncKeepAliveAudio(true);
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+      if ('mediaSession' in navigator) {
+        try { navigator.mediaSession.playbackState = 'playing'; } catch (_) {}
+      }
       if (ytPlayerInstance && typeof ytPlayerInstance.playVideo === 'function') {
-        ytPlayerInstance.playVideo();
+        const st = typeof ytPlayerInstance.getPlayerState === 'function' ? ytPlayerInstance.getPlayerState() : -1;
+        if (st !== 1 && st !== 3) {
+          logPlayerDiag('app_command', 'playVideo:user', `prevState=${st}`);
+          ytPlayerInstance.playVideo();
+        }
+        if (document.visibilityState === 'visible') {
+          startProgressPolling();
+        }
         return;
       }
       const iframe = document.getElementById('fallbackIframe');
@@ -2087,7 +2271,6 @@
       }
       if (!autoplayNextEnabled) {
         setPlayingUIState(false);
-        syncKeepAliveAudio(false);
         return;
       }
       playNextTrack(true);
@@ -2111,7 +2294,6 @@
       else if (!fromAutoEnd || repeatMode === 1) openPlayerById(q[0], true);
       else {
         setPlayingUIState(false);
-        syncKeepAliveAudio(false);
       }
     }
 
@@ -2234,11 +2416,24 @@
 
     function closePlayerCompletely() {
       currentVideoId = null;
+      userPausedManually = true;
       setPlayingUIState(false);
-      if (progressPollTimer) { clearInterval(progressPollTimer); progressPollTimer = null; }
-      if (ytPlayerInstance && typeof ytPlayerInstance.destroy === 'function') ytPlayerInstance.destroy();
-      ytPlayerInstance = null;
-      document.getElementById('ytPlayerMount').innerHTML = '';
+      stopProgressPolling();
+
+      // Keep the single YT.Player instance alive — pause cleanly instead of destroying iframe
+      if (ytPlayerInstance && typeof ytPlayerInstance.pauseVideo === 'function') {
+        const st = typeof ytPlayerInstance.getPlayerState === 'function' ? ytPlayerInstance.getPlayerState() : -1;
+        if (st === 1 || st === 3) {
+          logPlayerDiag('app_command', 'pauseVideo:closeOverlay');
+          ytPlayerInstance.pauseVideo();
+        }
+      } else {
+        const fallback = document.getElementById('fallbackIframe');
+        if (fallback) {
+          document.getElementById('ytPlayerMount').innerHTML = '';
+          loadedPlayerVideoId = null;
+        }
+      }
 
       const overlay = document.getElementById('playerOverlay');
       overlay.style.transform = '';
@@ -2385,6 +2580,51 @@
       renderLibrary();
     }
 
+    function showLibSection(tab) {
+      if (tab === 'fav') {
+        currentLibTab = 'fav';
+        activePlaylistViewId = null;
+        renderLibrary();
+      } else if (tab === 'hist') {
+        currentLibTab = 'hist';
+        activePlaylistViewId = null;
+        renderLibrary();
+      } else {
+        currentLibTab = 'pl';
+        activePlaylistViewId = null;
+        renderLibrary();
+      }
+    }
+
+    function toggleSleepTimerQuick() {
+      toggleSleepTimer();
+      const lbl = document.getElementById('quickTimerLabel');
+      const btn = document.getElementById('btnQuickTimer');
+      if (sleepTimerInterval) {
+        btn.classList.add('bg-[#3a1214]', 'border-red-500/30', 'text-red-500');
+        lbl.innerText = 'Đang bật';
+        lbl.classList.add('text-red-400');
+      } else {
+        btn.classList.remove('bg-[#3a1214]', 'border-red-500/30', 'text-red-500');
+        lbl.innerText = 'Hẹn giờ';
+        lbl.classList.remove('text-red-400');
+      }
+    }
+
+    function toggleAutoplayNextQuick() {
+      autoplayNextEnabled = !autoplayNextEnabled;
+      setAutoplayNext(autoplayNextEnabled);
+      const btn = document.getElementById('btnQuickAutoplay');
+      const lbl = document.getElementById('quickAutoplayLabel');
+      if (autoplayNextEnabled) {
+        btn.className = 'flex flex-col items-center justify-center p-2 rounded-2xl bg-[#3a1214] border border-red-500/30 text-red-500 transition';
+        lbl.className = 'text-[10px] font-medium text-red-400';
+      } else {
+        btn.className = 'flex flex-col items-center justify-center p-2 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 transition text-zinc-400';
+        lbl.className = 'text-[10px] font-medium text-zinc-400';
+      }
+    }
+
     function renderLibrary() {
       const container = document.getElementById('libraryList');
       const headerActions = document.getElementById('libHeaderActions');
@@ -2396,24 +2636,25 @@
       btnNewPl.classList.add('hidden');
 
       if (currentLibTab === 'pl' && !activePlaylistViewId) {
-        headerActions.classList.remove('hidden');
-        subLabel.innerText = `${playlists.length} danh sách phát`;
-        btnNewPl.classList.remove('hidden');
-
+        headerActions.classList.add('hidden');
         if (playlists.length === 0) {
-          container.innerHTML = `<div class="text-center py-12 text-xs app-muted">Chưa có Playlist nào. Bấm "+ Tạo Playlist mới" hoặc nút "+ Playlist" khi nghe nhạc!</div>`;
+          container.innerHTML = `<div class="text-center py-6 text-xs text-zinc-500">Chưa có playlist nào. Bấm "+ Tạo playlist" ở trên!</div>`;
           return;
         }
         container.innerHTML = playlists.map(pl => {
           const cover = pl.items?.[0]?.thumb || 'https://i.ytimg.com/vi/Llw9Q6akRo4/hqdefault.jpg';
           return `
-            <div onclick="openPlaylistDetail('${escapeHTML(pl.id)}')" class="yt-card-anim flex items-center gap-3 cursor-pointer p-2 rounded-xl app-surface border app-border">
-              <img src="${escapeHTML(cover)}" class="w-16 h-16 rounded-xl object-cover bg-zinc-900 shrink-0" alt="">
-              <div class="flex-1 min-w-0">
-                <h4 class="text-xs font-bold app-text truncate">${escapeHTML(pl.name)}</h4>
-                <p class="text-[11px] app-muted mt-0.5">${(pl.items || []).length} bài hát / video</p>
+            <div onclick="openPlaylistDetail('${escapeHTML(pl.id)}')" class="yt-card-anim flex items-center justify-between cursor-pointer p-1 rounded-xl hover:bg-white/[0.04] transition">
+              <div class="flex items-center gap-3 min-w-0">
+                <img src="${escapeHTML(cover)}" class="w-14 h-14 rounded-xl object-cover bg-zinc-900 shrink-0 border border-white/10" alt="">
+                <div class="min-w-0">
+                  <h4 class="text-sm font-semibold text-white truncate">${escapeHTML(pl.name)}</h4>
+                  <p class="text-xs text-zinc-400 mt-0.5">${(pl.items || []).length} bài hát</p>
+                </div>
               </div>
-              <button onclick="deletePlaylist(event, '${escapeHTML(pl.id)}')" title="Xóa Playlist" class="p-1.5 app-muted hover:text-red-500 text-xs">✕</button>
+              <button onclick="deletePlaylist(event, '${escapeHTML(pl.id)}')" title="Tùy chọn" class="p-2 text-zinc-400 hover:text-red-500 text-sm">
+                <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+              </button>
             </div>
           `;
         }).join('');
@@ -2424,34 +2665,35 @@
       if (currentLibTab === 'pl' && activePlaylistViewId) {
         const pl = playlists.find(p => p.id === activePlaylistViewId);
         headerActions.classList.remove('hidden');
-        subLabel.innerHTML = `<button onclick="activePlaylistViewId=null; renderLibrary();" class="text-red-400 hover:underline">← Tất cả Playlist</button> • <b>${escapeHTML(pl?.name || '')}</b>`;
+        subLabel.innerHTML = `<button onclick="activePlaylistViewId=null; renderLibrary();" class="text-red-400 font-semibold hover:underline">← Thư viện</button> • <b>${escapeHTML(pl?.name || '')}</b>`;
         list = pl?.items || [];
         if (list.length > 0) currentQueueIds = list.map(v => v.id);
       } else if (currentLibTab === 'fav') {
-        headerActions.classList.add('hidden');
+        headerActions.classList.remove('hidden');
+        subLabel.innerHTML = `<button onclick="currentLibTab='pl'; renderLibrary();" class="text-red-400 font-semibold hover:underline">← Thư viện</button> • <b>Bài hát yêu thích</b>`;
         list = favorites;
       } else {
-        headerActions.classList.toggle('hidden', history.length === 0);
-        subLabel.innerText = 'Đã xem gần đây';
-        btnClearHist.classList.toggle('hidden', history.length === 0);
+        headerActions.classList.remove('hidden');
+        subLabel.innerHTML = `<button onclick="currentLibTab='pl'; renderLibrary();" class="text-red-400 font-semibold hover:underline">← Thư viện</button> • <b>Xem gần đây</b>`;
+        btnClearHist.classList.remove('hidden');
         list = history;
       }
 
       if (list.length === 0) {
-        container.innerHTML = `<div class="text-center py-12 text-xs app-muted">Danh sách này đang trống.</div>`;
+        container.innerHTML = `<div class="text-center py-8 text-xs text-zinc-500">Danh sách này đang trống.</div>`;
         return;
       }
 
       container.innerHTML = list.map(v => {
         videoRegistry.set(v.id, v);
         return `
-          <div onclick="openPlayerById('${escapeHTML(v.id)}')" class="yt-card-anim flex items-center gap-2.5 cursor-pointer hover:opacity-90 p-1.5 rounded-xl app-surface border app-border">
+          <div onclick="openPlayerById('${escapeHTML(v.id)}')" class="yt-card-anim flex items-center gap-3 cursor-pointer hover:bg-white/[0.04] p-1.5 rounded-xl border border-white/5 transition">
             <img src="${escapeHTML(v.thumb)}" loading="lazy" class="w-24 aspect-video rounded-lg object-cover bg-zinc-900 shrink-0" alt="">
             <div class="flex-1 min-w-0">
-              <h4 class="text-xs font-semibold app-text line-clamp-2 leading-snug">${escapeHTML(v.title)}</h4>
-              <p class="text-[10px] app-muted mt-0.5 truncate">${escapeHTML(v.channel)}${v.duration ? ` • ${escapeHTML(v.duration)}` : ''}</p>
+              <h4 class="text-xs font-semibold text-white line-clamp-2 leading-snug">${escapeHTML(v.title)}</h4>
+              <p class="text-[10px] text-zinc-400 mt-0.5 truncate">${escapeHTML(v.channel)}${v.duration ? ` • ${escapeHTML(v.duration)}` : ''}</p>
             </div>
-            <button onclick="removeLibraryItem(event, '${escapeHTML(v.id)}')" title="Xóa" class="p-1.5 app-muted hover:text-red-500 shrink-0 text-xs">✕</button>
+            <button onclick="removeLibraryItem(event, '${escapeHTML(v.id)}')" title="Xóa" class="p-1.5 text-zinc-400 hover:text-red-500 shrink-0 text-xs">✕</button>
           </div>
         `;
       }).join('');
@@ -2504,7 +2746,7 @@
     function setBackgroundPlay(enabled) {
       bgPlayEnabled = !!enabled;
       localStorage.setItem('ytplayer_bg_play', bgPlayEnabled ? 'true' : 'false');
-      syncKeepAliveAudio(isPlayerPlaying && bgPlayEnabled);
+      logPlayerDiag('app_setting', 'setBackgroundPlay', `enabled=${bgPlayEnabled}`);
     }
 
     function setDefaultOpenMode(mode) {

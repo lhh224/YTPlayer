@@ -1,16 +1,71 @@
 // PlaybackService.swift
 // YTPlayer
 //
-// Manages playback state, shared WebKit connection/cache pool, background audio
-// persistence, WebKit MediaSession Lock Screen integration, and YouTube IFrame HTML.
+// Manages single-instance playback state, shared WebKit connection pool, passive
+// foreground/background lifecycle handling (zero redundant player commands on transitions),
+// AudioSession management, and structured transition diagnostics logging.
 
 import Foundation
 import Combine
 import WebKit
 import AVFoundation
+import os
 #if canImport(UIKit)
 import UIKit
 #endif
+
+// MARK: - Structured Playback Transition Diagnostics
+
+final class PlaybackDiagnostics {
+    static let shared = PlaybackDiagnostics()
+
+    private let logger = Logger(subsystem: "com.ytplayer.app", category: "PlaybackLifecycle")
+    private let lock = NSLock()
+    private let bootTime = CFAbsoluteTimeGetCurrent()
+    private var lastLifecycleTimestamp: CFAbsoluteTime = 0
+    private(set) var recentEvents: [String] = []
+
+    private init() {}
+
+    func markLifecycle(_ event: String, details: String = "") {
+        lock.lock()
+        lastLifecycleTimestamp = CFAbsoluteTimeGetCurrent()
+        let elapsedMs = Int((lastLifecycleTimestamp - bootTime) * 1000)
+        let entry = details.isEmpty
+            ? "[+\(elapsedMs)ms] [Lifecycle] \(event)"
+            : "[+\(elapsedMs)ms] [Lifecycle] \(event) | \(details)"
+        appendEntryLocked(entry)
+        lock.unlock()
+
+        logger.info("\(entry, privacy: .public)")
+    }
+
+    func logPlayerEvent(_ event: String, source: String, details: String = "") {
+        lock.lock()
+        let now = CFAbsoluteTimeGetCurrent()
+        let elapsedMs = Int((now - bootTime) * 1000)
+        let sinceTransitionMs = lastLifecycleTimestamp > 0
+            ? Int((now - lastLifecycleTimestamp) * 1000)
+            : -1
+        let transitionTag = (sinceTransitionMs >= 0 && sinceTransitionMs <= 3000)
+            ? "dt_transition=\(sinceTransitionMs)ms"
+            : "steady_state"
+        let entry = "[+\(elapsedMs)ms] [\(source)] \(event) (\(transitionTag))\(details.isEmpty ? "" : " | \(details)")"
+        appendEntryLocked(entry)
+        lock.unlock()
+
+        logger.info("\(entry, privacy: .public)")
+    }
+
+    private func appendEntryLocked(_ entry: String) {
+        recentEvents.append(entry)
+        if recentEvents.count > 120 {
+            recentEvents.removeFirst(recentEvents.count - 120)
+        }
+    }
+}
+
+// MARK: - PlaybackService
 
 final class PlaybackService: ObservableObject {
 
@@ -23,7 +78,7 @@ final class PlaybackService: ObservableObject {
     // MARK: - Shared Network & WebKit Optimization Pool
 
     /// Shared WebKit process pool so DNS, TLS 1.3 / HTTP3 QUIC sessions, and cached
-    /// YouTube player scripts (`iframe_api`, `base.js`) persist across video opens.
+    /// YouTube player scripts (`iframe_api`, `base.js`) persist across the app lifecycle.
     static let sharedProcessPool = WKProcessPool()
 
     /// Verified HTTPS origin used as `baseURL` and IFrame `origin` parameter so WKWebView
@@ -40,25 +95,24 @@ final class PlaybackService: ObservableObject {
     @Published var isBackgroundPlaybackEnabled: Bool {
         didSet {
             UserDefaults.standard.set(isBackgroundPlaybackEnabled, forKey: Keys.backgroundPlaybackEnabled)
-            syncBackgroundFlagToWebView()
+            PlaybackDiagnostics.shared.markLifecycle(
+                "setting.backgroundPlaybackChanged",
+                details: "enabled=\(isBackgroundPlaybackEnabled)"
+            )
         }
     }
 
-    // MARK: - Background & Interruption State
+    // MARK: - Lifecycle & Interruption State
 
     private(set) var isUserPaused: Bool = false
     private(set) var isAppInBackground: Bool = false
-    private var backgroundTransitionDate: Date?
     private var wasPlayingBeforeInterruption: Bool = false
     private var hasRegisteredObservers: Bool = false
     private var isAudioSessionActive: Bool = false
     private var hasWarmedUpWebKit: Bool = false
+    private var lastSyncedMediaSessionVideoId: String?
     private var warmupWebView: WKWebView?
     private var cancellables: Set<AnyCancellable> = []
-
-    #if canImport(UIKit)
-    private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
-    #endif
 
     // MARK: - Active Player Bridge Callbacks
 
@@ -88,8 +142,7 @@ final class PlaybackService: ObservableObject {
 
     // MARK: - Network & Player Script Pre-Warming
 
-    /// Pre-warms TLS/HTTP3 connections and caches YouTube's `iframe_api` script at app launch
-    /// so opening the first video starts almost instantaneously without cold-start buffering.
+    /// Pre-warms TLS/HTTP3 connections and caches YouTube's `iframe_api` script once at launch.
     @MainActor
     func prewarmNetworkAndPlayerCache() {
         guard !hasWarmedUpWebKit else { return }
@@ -111,110 +164,19 @@ final class PlaybackService: ObservableObject {
         """
         wv.loadHTMLString(prewarmHTML, baseURL: Self.embedBaseURL)
 
-        // Release temporary warmup view once scripts/connections are cached in sharedProcessPool
         DispatchQueue.main.asyncAfter(deadline: .now() + 8.0) { [weak self] in
             self?.warmupWebView = nil
         }
     }
 
-    // MARK: - Anti-Auto-Pause Visibility Override UserScript
-
-    /// JavaScript injected into BOTH the host document and child YouTube embed iframes
-    /// (`forMainFrameOnly: false`) to prevent Page Visibility detection from pausing audio
-    /// when locking the iPhone screen or moving the app to the background.
-    static let visibilityOverrideScript: String = """
-    (function() {
-        if (window.__ytVisibilityOverrideInstalled) { return; }
-        window.__ytVisibilityOverrideInstalled = true;
-
-        window.__ytBgGuardActive = false;
-        window.__ytAllowNativePause = true;
-
-        try {
-            Object.defineProperty(document, 'hidden', {
-                configurable: true,
-                get: function() { return false; }
-            });
-            Object.defineProperty(document, 'visibilityState', {
-                configurable: true,
-                get: function() { return 'visible'; }
-            });
-            Object.defineProperty(document, 'webkitHidden', {
-                configurable: true,
-                get: function() { return false; }
-            });
-            Object.defineProperty(document, 'webkitVisibilityState', {
-                configurable: true,
-                get: function() { return 'visible'; }
-            });
-        } catch (e) {}
-
-        var stopVisibilityPropagation = function(event) {
-            if (event && typeof event.stopImmediatePropagation === 'function') {
-                event.stopImmediatePropagation();
-            }
-            if (event && typeof event.stopPropagation === 'function') {
-                event.stopPropagation();
-            }
-        };
-
-        ['visibilitychange', 'webkitvisibilitychange'].forEach(function(evtName) {
-            window.addEventListener(evtName, stopVisibilityPropagation, true);
-            document.addEventListener(evtName, stopVisibilityPropagation, true);
-        });
-
-        var origDocAdd = Document.prototype.addEventListener;
-        Document.prototype.addEventListener = function(type, listener, options) {
-            if (type === 'visibilitychange' || type === 'webkitvisibilitychange') {
-                return;
-            }
-            return origDocAdd.call(this, type, listener, options);
-        };
-
-        // Synchronize background guard state between host frame and YouTube embed iframe
-        window.addEventListener('message', function(ev) {
-            if (!ev || !ev.data || typeof ev.data !== 'object') { return; }
-            if (ev.data.__ytSyncGuard === true) {
-                window.__ytBgGuardActive = Boolean(ev.data.bgGuard);
-                window.__ytAllowNativePause = Boolean(ev.data.allowPause);
-                if (ev.data.forcePlay === true && window.__ytBgGuardActive && !window.__ytAllowNativePause) {
-                    var vids = document.getElementsByTagName('video');
-                    for (var i = 0; i < vids.length; i++) {
-                        if (vids[i].paused && !vids[i].ended && vids[i].readyState >= 2) {
-                            var p = vids[i].play();
-                            if (p && typeof p.catch === 'function') { p.catch(function(){}); }
-                        }
-                    }
-                }
-            }
-        }, true);
-
-        // Resume underlying HTML5 <video> inside YouTube iframe ONLY if WebKit auto-paused on screen lock
-        document.addEventListener('pause', function(ev) {
-            var target = ev && ev.target;
-            if (target && target.tagName === 'VIDEO' &&
-                window.__ytBgGuardActive &&
-                !window.__ytAllowNativePause &&
-                !target.ended) {
-                setTimeout(function() {
-                    if (window.__ytBgGuardActive && !window.__ytAllowNativePause && target.paused && !target.ended) {
-                        var p = target.play();
-                        if (p && typeof p.catch === 'function') { p.catch(function(){}); }
-                    }
-                }, 120);
-            }
-        }, true);
-    })();
-    """
-
     // MARK: - Public API (HTML & URL Builders)
 
-    /// Build a fully self-contained HTML page that loads the YouTube IFrame Player API
-    /// with preconnect hints, native WebKit `navigator.mediaSession` Lock Screen integration
-    /// (avoiding UIProcess/WebKit.GPU NowPlaying conflicts!), and smooth adaptive streaming.
+    /// Builds a clean, single-instance HTML host for the official YouTube IFrame Player API:
+    /// - Zero invasive DOM/visibility hacks or competing timers during foreground/background switches.
+    /// - Deduplicated `navigator.mediaSession` metadata (set once per track, never per state tick).
+    /// - Passive `visibilitychange`, `pagehide`, and `pageshow` telemetry forwarded for diagnostics.
     func buildEmbedHTML(videoId: String, autoplay: Bool = false, initialVideo: VideoItem? = nil) -> String {
         let autoplayValue = autoplay ? 1 : 0
-        let bgEnabledLiteral = isBackgroundPlaybackEnabled ? "true" : "false"
         let metaVideo = initialVideo ?? currentVideo
         let safeTitle = Self.escapeJSString(metaVideo?.title ?? "YT Player")
         let safeArtist = Self.escapeJSString(metaVideo?.channelName ?? "YouTube")
@@ -236,19 +198,15 @@ final class PlaybackService: ObservableObject {
                 html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
                 #player { width: 100%; height: 100%; transform: translateZ(0); }
             </style>
-            <script>
-            \(Self.visibilityOverrideScript)
-            </script>
         </head>
         <body>
             <div id="player"></div>
             <script>
                 var player;
                 var shouldAutoplayInitial = (\(autoplayValue) === 1);
-                window.__ytAppInBackground = false;
-                window.__ytBgEnabled = \(bgEnabledLiteral);
+                var currentLoadedVideoId = '\(videoId)';
+                var lastAppliedMetaKey = '';
                 window.__ytUserPaused = false;
-                window.__ytBgTransitionAt = 0;
                 window.__ytMeta = {
                     title: '\(safeTitle)',
                     artist: '\(safeArtist)',
@@ -261,13 +219,16 @@ final class PlaybackService: ObservableObject {
                     }
                 }
 
-                // Native WebKit MediaSession integration: runs directly inside WebKit's media
-                // process so Lock Screen & Control Center never conflict with WKWebView audio!
+                // Deduplicated MediaSession metadata update: ONLY writes to MediaSession when
+                // track metadata actually changes, preventing MRMediaRemote re-registration hitches.
                 window.__ytUpdateMediaSession = function(title, artist, thumb) {
                     if (title) { window.__ytMeta.title = title; }
                     if (artist) { window.__ytMeta.artist = artist; }
                     if (thumb) { window.__ytMeta.thumb = thumb; }
                     if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') { return; }
+                    var nextKey = (window.__ytMeta.title || '') + '|' + (window.__ytMeta.artist || '') + '|' + (window.__ytMeta.thumb || '');
+                    if (nextKey === lastAppliedMetaKey) { return; }
+                    lastAppliedMetaKey = nextKey;
                     try {
                         navigator.mediaSession.metadata = new MediaMetadata({
                             title: window.__ytMeta.title || 'YT Player',
@@ -284,13 +245,17 @@ final class PlaybackService: ObservableObject {
                     window.__ytUpdateMediaSession();
                     var actions = {
                         play: function() {
-                            window.__ytSetUserPaused(false);
-                            if (player && typeof player.playVideo === 'function') { player.playVideo(); }
+                            window.__ytUserPaused = false;
+                            if (player && typeof player.getPlayerState === 'function' && player.getPlayerState() !== 1) {
+                                player.playVideo();
+                            }
                             postToNative({ event: 'onRemoteCommand', command: 'play' });
                         },
                         pause: function() {
-                            window.__ytSetUserPaused(true);
-                            if (player && typeof player.pauseVideo === 'function') { player.pauseVideo(); }
+                            window.__ytUserPaused = true;
+                            if (player && typeof player.getPlayerState === 'function' && player.getPlayerState() === 1) {
+                                player.pauseVideo();
+                            }
                             postToNative({ event: 'onRemoteCommand', command: 'pause' });
                         },
                         nexttrack: function() {
@@ -310,45 +275,28 @@ final class PlaybackService: ObservableObject {
                     });
                 }
 
-                function broadcastGuardToChildIframe(forcePlay) {
-                    var guardActive = Boolean(window.__ytBgEnabled && window.__ytAppInBackground);
-                    var allowPause = Boolean(window.__ytUserPaused || !window.__ytBgEnabled || !window.__ytAppInBackground);
-                    window.__ytBgGuardActive = guardActive;
-                    window.__ytAllowNativePause = allowPause;
-                    var msg = {
-                        __ytSyncGuard: true,
-                        bgGuard: guardActive,
-                        allowPause: allowPause,
-                        forcePlay: Boolean(forcePlay && guardActive && !allowPause)
-                    };
-                    var iframes = document.getElementsByTagName('iframe');
-                    for (var i = 0; i < iframes.length; i++) {
-                        try {
-                            if (iframes[i].contentWindow) {
-                                iframes[i].contentWindow.postMessage(msg, '*');
-                            }
-                        } catch (e) {}
-                    }
-                }
-
-                window.__ytSetBackgroundState = function(inBackground, bgEnabled) {
-                    window.__ytAppInBackground = Boolean(inBackground);
-                    if (typeof bgEnabled === 'boolean') {
-                        window.__ytBgEnabled = bgEnabled;
-                    }
-                    if (inBackground) {
-                        window.__ytBgTransitionAt = Date.now();
-                    }
-                    broadcastGuardToChildIframe(false);
-                };
-
                 window.__ytSetUserPaused = function(paused) {
                     window.__ytUserPaused = Boolean(paused);
-                    broadcastGuardToChildIframe(false);
                 };
 
-                // Non-disruptive autoplay: waits 180ms to let YouTube's own autoplay start first,
-                // and ONLY calls playVideo() if the player is still sitting idle in CUED (5) or UNSTARTED (-1).
+                // Load a different track only when videoId actually differs from the loaded track
+                window.__ytLoadTrackIfNeeded = function(nextVideoId) {
+                    if (!nextVideoId || !player) { return; }
+                    window.__ytUserPaused = false;
+                    if (currentLoadedVideoId === nextVideoId) {
+                        var st = (typeof player.getPlayerState === 'function') ? player.getPlayerState() : -1;
+                        if (st !== 1 && st !== 3 && typeof player.playVideo === 'function') {
+                            player.playVideo();
+                        }
+                        return;
+                    }
+                    currentLoadedVideoId = nextVideoId;
+                    if (typeof player.loadVideoById === 'function') {
+                        player.loadVideoById(nextVideoId);
+                    }
+                };
+
+                // Single gentle autoplay kick on initial ready only if still idle/cued
                 window.__ytTriggerAutoplay = function() {
                     setTimeout(function() {
                         if (!player || typeof player.playVideo !== 'function' || window.__ytUserPaused) { return; }
@@ -358,6 +306,35 @@ final class PlaybackService: ObservableObject {
                         }
                     }, 180);
                 };
+
+                // Passive lifecycle diagnostics (zero player mutations during transitions!)
+                document.addEventListener('visibilitychange', function() {
+                    var st = (player && typeof player.getPlayerState === 'function') ? player.getPlayerState() : -99;
+                    var cur = (player && typeof player.getCurrentTime === 'function') ? (player.getCurrentTime() || 0) : 0;
+                    postToNative({
+                        event: 'onDiagnostic',
+                        source: 'webkit_dom',
+                        name: 'visibilitychange:' + document.visibilityState,
+                        playerState: st,
+                        currentTime: cur
+                    });
+                }, { passive: true });
+
+                window.addEventListener('pagehide', function(ev) {
+                    postToNative({
+                        event: 'onDiagnostic',
+                        source: 'webkit_dom',
+                        name: 'pagehide:persisted=' + Boolean(ev && ev.persisted)
+                    });
+                }, { passive: true });
+
+                window.addEventListener('pageshow', function(ev) {
+                    postToNative({
+                        event: 'onDiagnostic',
+                        source: 'webkit_dom',
+                        name: 'pageshow:persisted=' + Boolean(ev && ev.persisted)
+                    });
+                }, { passive: true });
 
                 var tag = document.createElement('script');
                 tag.src = "https://www.youtube.com/iframe_api";
@@ -400,15 +377,10 @@ final class PlaybackService: ObservableObject {
 
                 function onPlayerReady(event) {
                     installMediaSessionHandlers();
-                    try {
-                        if (player && typeof player.setPlaybackQualityRange === 'function') {
-                            player.setPlaybackQualityRange('default', 'hd1080');
-                        }
-                    } catch (e) {}
                     var dur = (player && typeof player.getDuration === 'function') ? (player.getDuration() || 0) : 0;
                     postToNative({
                         event: 'onReady',
-                        videoId: '\(videoId)',
+                        videoId: currentLoadedVideoId,
                         currentTime: 0,
                         duration: dur
                     });
@@ -419,26 +391,8 @@ final class PlaybackService: ObservableObject {
 
                 function onPlayerStateChange(event) {
                     var state = event.data;
-                    var recentlyBackgrounded = (Date.now() - (window.__ytBgTransitionAt || 0)) < 3500;
-
-                    if (state === YT.PlayerState.PAUSED &&
-                        window.__ytBgEnabled &&
-                        !window.__ytUserPaused &&
-                        (window.__ytAppInBackground || recentlyBackgrounded)) {
-                        broadcastGuardToChildIframe(true);
-                        if (player && typeof player.playVideo === 'function') {
-                            player.playVideo();
-                        }
-                        postToNative({
-                            event: 'onBackgroundAutoResume',
-                            data: state
-                        });
-                        return;
-                    }
-
                     if (state === YT.PlayerState.PLAYING) {
                         window.__ytUserPaused = false;
-                        window.__ytUpdateMediaSession();
                         if ('mediaSession' in navigator) {
                             try { navigator.mediaSession.playbackState = 'playing'; } catch (e) {}
                         }
@@ -447,7 +401,6 @@ final class PlaybackService: ObservableObject {
                             try { navigator.mediaSession.playbackState = 'paused'; } catch (e) {}
                         }
                     }
-
                     emitProgressSnapshot('onStateChange', state);
                 }
 
@@ -488,12 +441,15 @@ final class PlaybackService: ObservableObject {
         }
         ensureAudioSessionConfiguredOnce()
 
-        // Push metadata into WebKit's native navigator.mediaSession so Lock Screen shows
-        // song title, channel, and artwork WITHOUT fighting WebKit.GPU's audio session!
-        let safeTitle = Self.escapeJSString(video.title)
-        let safeArtist = Self.escapeJSString(video.channelName)
-        let safeThumb = Self.escapeJSString(video.thumbnailURL)
-        jsCommandExecutor?("if (window.__ytUpdateMediaSession) { window.__ytUpdateMediaSession('\(safeTitle)', '\(safeArtist)', '\(safeThumb)'); }")
+        // Only evaluate JS MediaSession update when track ID or title actually changed
+        let mediaKey = "\(video.id)|\(video.title)"
+        if lastSyncedMediaSessionVideoId != mediaKey {
+            lastSyncedMediaSessionVideoId = mediaKey
+            let safeTitle = Self.escapeJSString(video.title)
+            let safeArtist = Self.escapeJSString(video.channelName)
+            let safeThumb = Self.escapeJSString(video.thumbnailURL)
+            jsCommandExecutor?("if (window.__ytUpdateMediaSession) { window.__ytUpdateMediaSession('\(safeTitle)', '\(safeArtist)', '\(safeThumb)'); }")
+        }
 
         NowPlayingService.shared.configureRemoteCommands()
         NowPlayingService.shared.updateNowPlaying(
@@ -521,6 +477,7 @@ final class PlaybackService: ObservableObject {
         isUserPaused = true
         currentTime = 0
         duration = 0
+        lastSyncedMediaSessionVideoId = nil
         currentVideo = nil
         NowPlayingService.shared.clearNowPlaying()
     }
@@ -542,25 +499,13 @@ final class PlaybackService: ObservableObject {
         playbackQueue = videos
     }
 
-    var shouldAutoResumeInBackground: Bool {
-        guard isBackgroundPlaybackEnabled, !isUserPaused else { return false }
-        if isAppInBackground { return true }
-        if let transitionDate = backgroundTransitionDate,
-           Date().timeIntervalSince(transitionDate) < 3.5 {
-            return true
-        }
-        return false
-    }
+    // MARK: - ScenePhase & System Lifecycle Handling (Zero Redundant Commands)
 
-    func attemptBackgroundAutoResume() {
-        guard shouldAutoResumeInBackground else { return }
-        ensureAudioSessionConfiguredOnce()
-        jsCommandExecutor?("window.__ytSetUserPaused && window.__ytSetUserPaused(false); window.__ytSetBackgroundState && window.__ytSetBackgroundState(true, true); if (window.player && typeof player.getPlayerState === 'function' && player.getPlayerState() === 2) { player.playVideo(); }")
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-            guard let self = self, self.shouldAutoResumeInBackground else { return }
-            self.jsCommandExecutor?("if (window.player && typeof player.getPlayerState === 'function' && player.getPlayerState() === 2) { player.playVideo(); }")
-        }
+    func recordScenePhase(_ phaseDescription: String) {
+        PlaybackDiagnostics.shared.markLifecycle(
+            "swiftui.scenePhase.\(phaseDescription)",
+            details: "isPlaying=\(isPlaying), userPaused=\(isUserPaused), bgEnabled=\(isBackgroundPlaybackEnabled)"
+        )
     }
 
     // MARK: - Remote Command & Sleep Timer Bridges
@@ -568,6 +513,7 @@ final class PlaybackService: ObservableObject {
     func remotePlay() {
         isUserPaused = false
         ensureAudioSessionConfiguredOnce()
+        PlaybackDiagnostics.shared.logPlayerEvent("remotePlay", source: "app_command")
         jsCommandExecutor?("window.__ytSetUserPaused && window.__ytSetUserPaused(false);")
         if let onRemotePlay = onRemotePlay {
             onRemotePlay()
@@ -575,18 +521,19 @@ final class PlaybackService: ObservableObject {
             if let video = currentVideo {
                 play(video: video)
             }
-            jsCommandExecutor?("if (window.player && typeof player.playVideo === 'function') { player.playVideo(); }")
+            jsCommandExecutor?("if (window.player && typeof player.getPlayerState === 'function' && player.getPlayerState() !== 1) { player.playVideo(); }")
         }
     }
 
     func remotePause() {
         isUserPaused = true
+        PlaybackDiagnostics.shared.logPlayerEvent("remotePause", source: "app_command")
         jsCommandExecutor?("window.__ytSetUserPaused && window.__ytSetUserPaused(true);")
         if let onRemotePause = onRemotePause {
             onRemotePause()
         } else {
             pause(userInitiated: true)
-            jsCommandExecutor?("if (window.player && typeof player.pauseVideo === 'function') { player.pauseVideo(); }")
+            jsCommandExecutor?("if (window.player && typeof player.getPlayerState === 'function' && player.getPlayerState() === 1) { player.pauseVideo(); }")
         }
     }
 
@@ -609,6 +556,7 @@ final class PlaybackService: ObservableObject {
     func remoteSeek(to positionTime: TimeInterval) {
         let clamped = max(0, positionTime)
         currentTime = clamped
+        PlaybackDiagnostics.shared.logPlayerEvent("remoteSeek", source: "app_command", details: "to=\(String(format: "%.1f", clamped))s")
         if let onRemoteSeek = onRemoteSeek {
             onRemoteSeek(clamped)
         } else {
@@ -631,6 +579,7 @@ final class PlaybackService: ObservableObject {
             .publisher(for: Notification.Name("SleepTimerFired"))
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
+                PlaybackDiagnostics.shared.markLifecycle("sleepTimer.fired")
                 self?.remotePause()
             }
             .store(in: &cancellables)
@@ -640,7 +589,7 @@ final class PlaybackService: ObservableObject {
             .publisher(for: UIApplication.willResignActiveNotification)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.handleWillEnterBackgroundTransition()
+                self?.handleWillResignActive()
             }
             .store(in: &cancellables)
 
@@ -690,6 +639,7 @@ final class PlaybackService: ObservableObject {
             .publisher(for: AVAudioSession.mediaServicesWereResetNotification)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
+                PlaybackDiagnostics.shared.markLifecycle("audioSession.mediaServicesWereReset")
                 self?.isAudioSessionActive = false
                 self?.forceReactivateAudioSession()
                 if self?.isPlaying == true && self?.isUserPaused == false {
@@ -703,7 +653,7 @@ final class PlaybackService: ObservableObject {
     // MARK: - Private Audio Session Management
 
     /// Configures `.playback` with `.moviePlayback` and `.mixWithOthers` ONCE so UIProcess
-    /// and `WebKit.GPU` share the audio session harmoniously without ever pausing `<video>`.
+    /// and `WebKit.GPU` share the audio session seamlessly without interrupting active streams.
     func ensureAudioSessionConfiguredOnce() {
         guard !isAudioSessionActive else { return }
         forceReactivateAudioSession()
@@ -716,8 +666,9 @@ final class PlaybackService: ObservableObject {
             try session.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
             try session.setActive(true)
             isAudioSessionActive = true
+            PlaybackDiagnostics.shared.markLifecycle("audioSession.activated", details: "category=playback, mode=moviePlayback")
         } catch {
-            print("[PlaybackService] AVAudioSession activation error: \(error.localizedDescription)")
+            PlaybackDiagnostics.shared.markLifecycle("audioSession.error", details: error.localizedDescription)
         }
         #endif
     }
@@ -730,66 +681,50 @@ final class PlaybackService: ObservableObject {
             .replacingOccurrences(of: "\r", with: " ")
     }
 
-    private func syncBackgroundFlagToWebView() {
-        let inBgLiteral = isAppInBackground ? "true" : "false"
-        let bgEnabledLiteral = isBackgroundPlaybackEnabled ? "true" : "false"
-        jsCommandExecutor?("if (window.__ytSetBackgroundState) { window.__ytSetBackgroundState(\(inBgLiteral), \(bgEnabledLiteral)); }")
-    }
-
     #if canImport(UIKit)
-    private func handleWillEnterBackgroundTransition() {
-        backgroundTransitionDate = Date()
-        if isBackgroundPlaybackEnabled && currentVideo != nil && !isUserPaused {
-            jsCommandExecutor?("if (window.__ytSetBackgroundState) { window.__ytSetBackgroundState(true, true); }")
-        }
+    private func handleWillResignActive() {
+        PlaybackDiagnostics.shared.markLifecycle(
+            "uiApplication.willResignActive",
+            details: "isPlaying=\(isPlaying), userPaused=\(isUserPaused)"
+        )
+        // Intentionally send ZERO JavaScript commands here so WebKit's audio pipeline
+        // is never disturbed during Notification Center / Control Center / app-switcher gestures.
     }
 
     private func handleDidEnterBackground() {
         isAppInBackground = true
-        backgroundTransitionDate = Date()
-        syncBackgroundFlagToWebView()
+        PlaybackDiagnostics.shared.markLifecycle(
+            "uiApplication.didEnterBackground",
+            details: "isPlaying=\(isPlaying), userPaused=\(isUserPaused), bgEnabled=\(isBackgroundPlaybackEnabled)"
+        )
 
         guard currentVideo != nil else { return }
 
-        if !isBackgroundPlaybackEnabled {
-            if isPlaying {
-                remotePause()
-            }
-            return
+        // Only issue a pause command if the user explicitly turned OFF Background Audio in Settings.
+        // Otherwise, do NOT poke playVideo()/pauseVideo()/seekTo() — let the active stream run untouched!
+        if !isBackgroundPlaybackEnabled && isPlaying {
+            pause(userInitiated: false)
+            jsCommandExecutor?("if (window.player && typeof player.getPlayerState === 'function' && player.getPlayerState() === 1) { player.pauseVideo(); }")
         }
-
-        guard !isUserPaused else { return }
-
-        beginShortBackgroundTransitionTask()
-        attemptBackgroundAutoResume()
     }
 
     private func handleWillEnterForeground() {
         isAppInBackground = false
-        syncBackgroundFlagToWebView()
-        endBackgroundTransitionTask()
+        PlaybackDiagnostics.shared.markLifecycle(
+            "uiApplication.willEnterForeground",
+            details: "isPlaying=\(isPlaying), userPaused=\(isUserPaused)"
+        )
+        // Zero JS bridge calls on foreground entry: WebKit re-attaches its video compositing
+        // layer cleanly without playVideo()/seekTo()/metadata re-registration interference,
+        // and user-paused videos stay strictly paused.
     }
 
     private func handleDidBecomeActive() {
         isAppInBackground = false
-        syncBackgroundFlagToWebView()
-    }
-
-    private func beginShortBackgroundTransitionTask() {
-        endBackgroundTransitionTask()
-        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "YTPlayerBackgroundAudioHandoff") { [weak self] in
-            self?.endBackgroundTransitionTask()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) { [weak self] in
-            self?.endBackgroundTransitionTask()
-        }
-    }
-
-    private func endBackgroundTransitionTask() {
-        if backgroundTaskID != .invalid {
-            UIApplication.shared.endBackgroundTask(backgroundTaskID)
-            backgroundTaskID = .invalid
-        }
+        PlaybackDiagnostics.shared.markLifecycle(
+            "uiApplication.didBecomeActive",
+            details: "isPlaying=\(isPlaying), userPaused=\(isUserPaused)"
+        )
     }
     #endif
 
@@ -805,6 +740,10 @@ final class PlaybackService: ObservableObject {
         case .began:
             isAudioSessionActive = false
             wasPlayingBeforeInterruption = isPlaying && !isUserPaused
+            PlaybackDiagnostics.shared.markLifecycle(
+                "audioSession.interruptionBegan",
+                details: "wasPlaying=\(wasPlayingBeforeInterruption)"
+            )
             if isPlaying {
                 isPlaying = false
             }
@@ -813,8 +752,13 @@ final class PlaybackService: ObservableObject {
             forceReactivateAudioSession()
             let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            if (options.contains(.shouldResume) || wasPlayingBeforeInterruption) && !isUserPaused {
-                wasPlayingBeforeInterruption = false
+            let shouldResume = options.contains(.shouldResume) && wasPlayingBeforeInterruption && !isUserPaused
+            PlaybackDiagnostics.shared.markLifecycle(
+                "audioSession.interruptionEnded",
+                details: "shouldResume=\(shouldResume), userPaused=\(isUserPaused)"
+            )
+            wasPlayingBeforeInterruption = false
+            if shouldResume {
                 remotePlay()
             }
 
@@ -830,6 +774,7 @@ final class PlaybackService: ObservableObject {
             return
         }
 
+        PlaybackDiagnostics.shared.markLifecycle("audioSession.routeChange", details: "reason=\(reasonValue)")
         if reason == .oldDeviceUnavailable && isPlaying {
             remotePause()
         }

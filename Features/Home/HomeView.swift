@@ -4,82 +4,63 @@ struct HomeView: View {
     @StateObject private var vm = HomeViewModel()
     @EnvironmentObject var router: AppRouter
     @EnvironmentObject var libraryRepo: LibraryRepository
+    @ObservedObject private var playbackService = PlaybackService.shared
 
-    private var sectionHeaderTitle: String {
-        if vm.isUsingFallbackData {
-            return "Danh mục nổi bật (Demo)"
+    @State private var selectedVideoForPlaylist: VideoItem? = nil
+    @State private var showPlaylistSheet = false
+    @State private var newPlaylistName = ""
+
+    private var historyVideos: [VideoItem] {
+        let history = libraryRepo.fetchHistory()
+        if !history.isEmpty {
+            return history
         }
-        return vm.isPersonalizedFeed ? "Đề xuất cho bạn" : "Thịnh hành tại Việt Nam"
+        // Graceful initial fallback items if history is empty on first launch
+        return Array(VideoItem.mockItems.prefix(4))
     }
 
     var body: some View {
-        navigationContainer {
-            Group {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Top Custom Header (Image 3)
+                homeHeaderBar
+
                 if vm.isLoading && vm.videos.isEmpty {
                     SkeletonList()
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 0) {
+                        LazyVStack(alignment: .leading, spacing: 20) {
                             if vm.isUsingFallbackData, let warning = vm.errorMessage {
                                 fallbackBanner(message: warning)
                             }
 
-                            SectionHeaderView(
-                                title: sectionHeaderTitle,
-                                actionTitle: "Làm mới",
-                                action: { vm.refresh(repo: libraryRepo) }
-                            )
+                            // 1. Khu vực Nghe tiếp (Horizontal Scroll)
+                            continueListeningSection
 
-                            if vm.isPersonalizedFeed && !vm.recommendationSummary.isEmpty && !vm.isUsingFallbackData {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "sparkles")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.ytRed)
-                                    Text("Dựa trên thói quen xem: \(vm.recommendationSummary)")
-                                        .font(.ytCaption)
-                                        .foregroundColor(.ytSecondaryText)
-                                        .lineLimit(1)
-                                    Spacer()
-                                }
-                                .padding(.horizontal, Spacing.lg)
-                                .padding(.bottom, Spacing.sm)
-                            }
-
-                            ForEach(vm.videos) { video in
-                                Button {
-                                    router.presentPlayer(video: video, queue: vm.videos)
-                                } label: {
-                                    VideoCardView(video: video)
-                                }
-                                .buttonStyle(.plain)
-
-                                Divider()
-                                    .padding(.leading, Spacing.lg)
-                            }
+                            // 2. Khu vực Đề xuất cho bạn (Vertical List)
+                            recommendedSection
                         }
+                        .padding(.top, 8)
+                        .padding(.bottom, 130) // Space for FloatingTabBar and MiniPlayer
                     }
                     .refreshable {
                         await vm.loadTrending(repo: libraryRepo, forceRefresh: true)
                     }
                 }
             }
-            .navigationTitle("YT Player")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    if vm.isLoading && !vm.videos.isEmpty {
-                        ProgressView()
-                    }
-                }
-            }
+        }
+        #if os(iOS)
+        .navigationBarHidden(true)
+        #endif
+        .sheet(isPresented: $showPlaylistSheet) {
+            playlistSheetView
         }
         .onAppear {
             vm.ensureFeedLoaded(repo: libraryRepo)
         }
         .onReceive(libraryRepo.objectWillChange) { _ in
-            // Refresh Home recommendations in background after user watches/favorites new videos
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 if router.selectedTab == 0 {
                     vm.ensureFeedLoaded(repo: libraryRepo)
@@ -88,40 +69,224 @@ struct HomeView: View {
         }
     }
 
-    @ViewBuilder
-    private func navigationContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        #if os(iOS)
-        NavigationStack {
-            content()
+    // MARK: - Header Bar (Image 3: Red YouTube Play Logo + YT Player + Bell)
+
+    private var homeHeaderBar: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 8) {
+                // Red YouTube Play Badge
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.ytRed)
+                        .frame(width: 30, height: 21)
+
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                        .offset(x: 0.5)
+                }
+
+                Text("YT Player")
+                    .font(.system(size: 20, weight: .bold, design: .default))
+                    .foregroundColor(.white)
+            }
+
+            Spacer()
+
+            // Notification Bell
+            Button {
+                // Bell action / feedback
+                #if canImport(UIKit)
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
+                #endif
+            } label: {
+                Image(systemName: "bell")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 38, height: 38)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
-        #else
-        NavigationView {
-            content()
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+        .padding(.bottom, 10)
+        .background(Color.black)
+    }
+
+    // MARK: - Section 1: Nghe tiếp (Continue Listening horizontal scroll)
+
+    private var continueListeningSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Text("Nghe tiếp")
+                    .font(.system(size: 19, weight: .bold))
+                    .foregroundColor(.white)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(Color.ytSubheadlineMuted)
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 14) {
+                    ForEach(historyVideos) { video in
+                        let isThisPlaying = playbackService.isPlaying && playbackService.currentVideo?.id == video.id
+
+                        Button {
+                            router.presentPlayer(video: video, queue: historyVideos)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ZStack {
+                                    AsyncImageView(urlString: video.thumbnailURL)
+                                        .aspectRatio(16 / 10, contentMode: .fill)
+                                        .frame(width: 154, height: 96)
+                                        .cornerRadius(16)
+                                        .clipped()
+
+                                    // Frosted Dark Circle with Pause icon if actively playing (Image 3)
+                                    if isThisPlaying {
+                                        ZStack {
+                                            Circle()
+                                                .fill(Color.black.opacity(0.65))
+                                                .frame(width: 44, height: 44)
+                                                .overlay(
+                                                    Circle().stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                                )
+
+                                            Image(systemName: "pause.fill")
+                                                .font(.system(size: 18, weight: .bold))
+                                                .foregroundColor(.white)
+                                        }
+                                    }
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(video.title)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
+
+                                    Text(video.channelName)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Color.ytSubheadlineMuted)
+                                        .lineLimit(1)
+                                }
+                                .frame(width: 154, alignment: .leading)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
         }
-        #endif
+    }
+
+    // MARK: - Section 2: Đề xuất cho bạn (Vertical List)
+
+    private var recommendedSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Đề xuất cho bạn")
+                .font(.system(size: 19, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+
+            ForEach(vm.videos) { video in
+                Button {
+                    router.presentPlayer(video: video, queue: vm.videos)
+                } label: {
+                    VideoCardView(video: video) {
+                        selectedVideoForPlaylist = video
+                        showPlaylistSheet = true
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - Playlist Sheet
+
+    private var playlistSheetView: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text("Lưu vào danh sách phát")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(.white)
+                Spacer()
+                Button("Xong") {
+                    showPlaylistSheet = false
+                }
+                .foregroundColor(.ytRed)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+
+            HStack {
+                TextField("Tên danh sách phát mới...", text: $newPlaylistName)
+                    .textFieldStyle(.roundedBorder)
+                Button("+ Tạo") {
+                    if let vid = selectedVideoForPlaylist, !newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty {
+                        libraryRepo.createPlaylist(name: newPlaylistName, initialVideo: vid)
+                        newPlaylistName = ""
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+            }
+            .padding(.horizontal, 16)
+
+            List(libraryRepo.fetchPlaylists()) { pl in
+                let contains = selectedVideoForPlaylist != nil && pl.items.contains(where: { $0.id == selectedVideoForPlaylist?.id })
+                Button {
+                    if let vid = selectedVideoForPlaylist {
+                        libraryRepo.toggleVideo(vid, inPlaylistId: pl.id)
+                    }
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(pl.name)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.white)
+                            Text("\(pl.items.count) bài")
+                                .font(.system(size: 12))
+                                .foregroundColor(Color.ytSubheadlineMuted)
+                        }
+                        Spacer()
+                        Image(systemName: contains ? "checkmark.circle.fill" : "plus.circle")
+                            .foregroundColor(contains ? .ytRed : Color.ytSubheadlineMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            .listStyle(.plain)
+        }
+        .background(Color.black.ignoresSafeArea())
     }
 
     private func fallbackBanner(message: String) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.xs) {
-            HStack(spacing: Spacing.xs) {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundColor(.orange)
                 Text("Đang hiển thị dữ liệu mẫu (YouTube API chưa sẵn sàng)")
-                    .font(.ytCaption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.ytPrimaryText)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
             }
             Text(message)
-                .font(.ytCaption)
-                .foregroundColor(.ytSecondaryText)
-                .lineLimit(3)
+                .font(.system(size: 11))
+                .foregroundColor(Color.ytSubheadlineMuted)
+                .lineLimit(2)
         }
-        .padding(Spacing.md)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.ytSurface)
-        .cornerRadius(CornerRadius.sm)
-        .padding(.horizontal, Spacing.lg)
-        .padding(.top, Spacing.sm)
+        .background(Color.ytSurfaceOLED)
+        .cornerRadius(12)
+        .padding(.horizontal, 16)
     }
 }
 

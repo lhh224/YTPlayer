@@ -10,6 +10,7 @@ import UIKit
 
 @main
 struct YTPlayerApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var router = AppRouter()
     @StateObject private var libraryRepo = LibraryRepository(context: CoreDataStack.shared.context)
     @StateObject private var settingsVM = SettingsViewModel()
@@ -27,6 +28,18 @@ struct YTPlayerApp: App {
                     PlaybackService.shared.prewarmNetworkAndPlayerCache()
                     ContentFilterService.shared.preloadIfNeeded()
                 }
+        }
+        .onChange(of: scenePhase) { newPhase in
+            switch newPhase {
+            case .active:
+                PlaybackService.shared.recordScenePhase("active")
+            case .inactive:
+                PlaybackService.shared.recordScenePhase("inactive")
+            case .background:
+                PlaybackService.shared.recordScenePhase("background")
+            @unknown default:
+                PlaybackService.shared.recordScenePhase("unknown")
+            }
         }
     }
 

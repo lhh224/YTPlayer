@@ -158,3 +158,25 @@
   2. Xây dựng `HabitRecommendationBuilder` phân tích lịch sử xem (`WatchHistoryItem`), danh sách yêu thích (`FavoriteItem`) và lịch sử tìm kiếm để tự động tổng hợp luồng **"Đề xuất cho bạn"** kết hợp xu hướng mới và tự làm mới khi thói quen thay đổi.
   3. Xóa hoàn toàn thanh tag gợi ý tĩnh trên `SearchView`, thay bằng `SearchHistoryStore` hiển thị danh sách lịch sử tìm kiếm chuẩn YouTube (icon đồng hồ, ảnh thu nhỏ kết quả đã mở, nút `↖` điền nhanh vào ô tìm kiếm, vuốt để xóa từng mục hoặc xóa tất cả). Nâng phiên bản lên `2.1.4 (Build 6)`.
 - **Trạng thái:** 🟢 Fixed
+
+### [UI-006] Thiết kế lại Floating Bottom Navigation Bar dạng Capsule chuẩn YouTube iOS (`2.2.0`)
+- **Ngày thực hiện:** 2026-11-27
+- **Mô tả triển khai:**
+  1. Tạo component `FloatingTabBar.swift` (`Core/DesignSystem/Components/`): dạng `Capsule` chiều cao `56pt`, lề ngang `16pt`, nền `#1C1C1E` độ đục `95%`, viền mảnh `0.8pt` (`white 10%`), 4 icon trắng `24pt` không chữ (`house.fill`, `magnifyingglass`, icon vector custom 3 thanh ngang + tam giác Play `LibraryPlaylistPlayIcon`, `gearshape`), kèm đầy đủ `accessibilityLabel` / `.isSelected` và phản hồi rung nhẹ (`UIImpactFeedbackGenerator(.light)`).
+  2. Áp dụng kỹ thuật một `Capsule` chọn `#48484A` duy nhất (`matchedGeometryEffect(..., isSource: false)` + Spring `response: 0.32, dampingFraction: 0.79`) để trượt mượt kể cả khi bấm chuyển tab liên tục giữa chừng mà không nhấp nháy.
+  3. Cập nhật `ContentView.swift` sang Persistent Tab Host giữ nguyên trạng thái cuộn/dữ liệu của từng tab, dùng `.safeAreaInset(edge: .bottom)` động (`72pt` / `134pt`) để nội dung cuộn mượt phía sau thanh nổi nhưng không bị che ở cuối danh sách, đặt `MiniPlayer` ngay phía trên thanh điều hướng (`70pt`) và giữ nguyên phiên `WKWebView`.
+- **Kiểm thử:** `plutil -lint` OK, `swiftc -typecheck` 41/41 file Swift 0 lỗi, 54/54 unit test đạt 100%, tương thích đầy đủ iOS 16.0+.
+- **Trạng thái:** 🟢 Completed
+
+### [PLAY-007] Hiện tượng âm thanh/video bị khựng một nhịp khi chuyển ứng dụng xuống nền hoặc quay lại ứng dụng (`2.2.1`)
+- **Ngày phát hiện & khắc phục:** 2026-11-27
+- **Mức độ:** Major
+- **Nguyên nhân gốc rễ:**
+  1. **Native SwiftUI / `WKWebView`:** Các observer `willResignActive`, `didEnterBackground`, `willEnterForeground`, `didBecomeActive` gửi JS bridge liên tục đúng thời điểm iOS tách/gắn lại layer video của `WebKit.GPU`; `handleDidEnterBackground` gọi cưỡng bức `playVideo()` (0ms & 400ms) chồng lên listener `<video>.pause` (`__ytSyncGuard`); `window.__ytUpdateMediaSession()` khởi tạo lại `new MediaMetadata(...)` mỗi lần nhận `PLAYING (1)` làm tái đăng ký `MRMediaRemote`; `AppRouter.closePlayer()` sinh `UUID` mới gây tái tạo `WKWebView`; `setPlaybackQualityRange` trong `onPlayerReady` làm xả bộ đệm đầu phiên.
+  2. **Web Clip / `web_preview/index.html`:** Sự kiện `visibilitychange -> hidden` đặt 3 timer `[250, 750, 1500]ms` gọi `playVideo()` vô điều kiện; khi quay lại `visible` sau `250ms` lại gọi `playActivePlayer()` kể cả lúc đang `BUFFERING (3)`; luồng `keepAliveAudio` PCM WAV phụ tranh trộn âm thanh với thẻ `<video>`; gọi `applyPreferredQuality()` ở mọi sự kiện `PLAYING` làm xả buffer; polling `500ms` kèm `setPositionState` chạy liên tục cả trong nền; `closePlayerCompletely()` gọi `ytPlayerInstance.destroy()` hủy trình phát duy nhất.
+- **Cách sửa:**
+  1. Duy trì **duy nhất 1 instance `WKWebView` + `YT.Player`** xuyên suốt vòng đời ứng dụng trên cả Native (`AppRouter.isPlayerPresented`, `YouTubeWebView.Coordinator.hasLoadedInitialHTML`, `window.__ytLoadTrackIfNeeded`) lẫn Web (`ytPlayerInstance` + `loadedPlayerVideoId`, giữ sống DOM khi đóng overlay).
+  2. Loại bỏ 100% lệnh `playVideo()`, `pauseVideo()`, `seekTo()`, `loadVideoById()` dư thừa khi chuyển trạng thái `scenePhase` / `UIApplication` / `visibilitychange` / `pagehide` / `pageshow` (chỉ gọi `pauseVideo()` khi người dùng tắt *Phát trong nền*, và tuyệt đối không tự phát lại khi `isUserPaused` / `userPausedManually == true`).
+  3. Khử trùng lặp `MediaMetadata` theo khóa bài hát (`lastAppliedMetaKey` / `lastSyncedMediaSessionVideoId`), gỡ bỏ `keepAliveAudio` và `setPlaybackQuality` lặp lại, tạm dừng timer polling khi trang ở trạng thái `hidden`.
+  4. Bổ sung hệ thống logging chẩn đoán `PlaybackDiagnostics` (`os.Logger` subsystem `com.ytplayer.app`, category `PlaybackLifecycle`) và `window.__ytDiagLogs` đo chính xác `dt_transition` (ms) giữa sự kiện hệ thống và sự kiện trình phát.
+- **Trạng thái:** 🟢 Fixed

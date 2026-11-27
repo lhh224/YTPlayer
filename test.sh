@@ -15,8 +15,8 @@ echo "          🚀 YT PLAYER — KIỂM TRA BIÊN DỊCH & UNIT TEST          
 echo "======================================================================"
 echo ""
 
-# 1. Typecheck toàn bộ 40 tệp Swift của ứng dụng
-echo "▶ [1/3] Kiểm tra biên dịch (Typecheck) toàn bộ 40 file mã nguồn Swift..."
+# 1. Typecheck toàn bộ 41 tệp Swift của ứng dụng
+echo "▶ [1/3] Kiểm tra biên dịch (Typecheck) toàn bộ 41 file mã nguồn Swift..."
 swiftc -module-cache-path "$CACHE_DIR" -typecheck -parse-as-library \
   "$DIR"/App/*.swift \
   "$DIR"/Core/DesignSystem/*.swift \
@@ -34,7 +34,7 @@ swiftc -module-cache-path "$CACHE_DIR" -typecheck -parse-as-library \
   "$DIR"/Features/Library/Components/*.swift \
   "$DIR"/Features/Settings/*.swift \
   "$DIR"/Services/*.swift
-echo "  ✅ Toàn bộ 40 file Swift biên dịch sạch 100% (0 lỗi)!"
+echo "  ✅ Toàn bộ 41 file Swift biên dịch sạch 100% (0 lỗi)!"
 echo ""
 
 # 2. Chạy bộ Unit Test nội bộ (với trình biên dịch Swift)
@@ -44,6 +44,7 @@ swiftc -module-cache-path "$CACHE_DIR" \
   "$DIR/Core/Models/Channel.swift" \
   "$DIR/Core/Models/SearchResult.swift" \
   "$DIR/Core/Models/AppError.swift" \
+  "$DIR/Core/Navigation/AppRouter.swift" \
   "$DIR/Core/Networking/NetworkError.swift" \
   "$DIR/Core/Networking/Endpoint.swift" \
   "$DIR/Services/YouTubeAPIService.swift" \

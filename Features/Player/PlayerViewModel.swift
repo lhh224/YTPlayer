@@ -47,8 +47,7 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
-    /// Stable HTML string keyed to initial video ID so switching tracks via `loadVideoById`
-    /// (including from Lock Screen while backgrounded) preserves the active `YT.Player` session.
+    /// Stable HTML string built once for the single `WKWebView` / `YT.Player` instance.
     let embedHTML: String
 
     init(video: VideoItem, libraryRepo: LibraryRepository, queue: [VideoItem] = []) {
@@ -110,7 +109,8 @@ final class PlayerViewModel: ObservableObject {
                 }
                 if self.video.id != nextVideo.id {
                     self.switchTrack(to: nextVideo)
-                } else if !self.isPlaying {
+                } else if self.playerState == .paused || self.playerState == .ended || self.playerState == .idle {
+                    // Same track re-opened from list after being closed/paused: resume without reloading
                     self.playPlayer()
                 }
             }
@@ -128,17 +128,35 @@ final class PlayerViewModel: ObservableObject {
         switch event {
         case "onReady":
             isPlayerReady = true
-            playerState = .playing
-            PlaybackService.shared.play(video: video)
+            PlaybackDiagnostics.shared.logPlayerEvent(
+                "YT.onReady",
+                source: "youtube_iframe",
+                details: "videoId=\(video.id), duration=\(String(format: "%.1f", duration))s"
+            )
+            if !PlaybackService.shared.isUserPaused {
+                playerState = .playing
+                PlaybackService.shared.play(video: video)
+            }
             if duration > 0 {
                 PlaybackService.shared.updateProgress(currentTime: currentTime, duration: duration)
             }
+
+        case "onDiagnostic":
+            let name = (json["name"] as? String) ?? "unknown"
+            let source = (json["source"] as? String) ?? "webkit_js"
+            let st = (json["playerState"] as? Int).map { String($0) } ?? "-"
+            PlaybackDiagnostics.shared.logPlayerEvent(
+                name,
+                source: source,
+                details: "ytState=\(st), pos=\(String(format: "%.2f", currentTime))s"
+            )
 
         case "onTimeUpdate":
             PlaybackService.shared.updateProgress(currentTime: currentTime, duration: duration)
 
         case "onRemoteCommand":
             if let cmd = json["command"] as? String {
+                PlaybackDiagnostics.shared.logPlayerEvent("mediaSession.\(cmd)", source: "lock_screen")
                 switch cmd {
                 case "play":
                     playerState = .playing
@@ -155,17 +173,20 @@ final class PlayerViewModel: ObservableObject {
                 }
             }
 
-        case "onBackgroundAutoResume":
-            // JS intercepted an involuntary background pause; ensure native session stays active
-            playerState = .playing
-            PlaybackService.shared.attemptBackgroundAutoResume()
-
         case "onStateChange":
             let stateCode = (json["data"] as? Int) ?? (json["state"] as? Int)
             guard let code = stateCode else { return }
+            PlaybackDiagnostics.shared.logPlayerEvent(
+                "YT.onStateChange(\(Self.describeYTState(code)))",
+                source: PlaybackService.shared.isAppInBackground ? "ios_webkit_or_youtube_bg" : "youtube_iframe",
+                details: "videoId=\(video.id), pos=\(String(format: "%.2f", currentTime))s, userPaused=\(PlaybackService.shared.isUserPaused)"
+            )
+
             switch code {
             case -1:
-                playerState = .idle
+                if playerState != .playing {
+                    playerState = .idle
+                }
 
             case 0:
                 if isRepeat {
@@ -178,20 +199,17 @@ final class PlayerViewModel: ObservableObject {
                 }
 
             case 1:
-                playerState = .playing
+                if playerState != .playing {
+                    playerState = .playing
+                }
                 PlaybackService.shared.play(video: video)
                 PlaybackService.shared.updateProgress(currentTime: currentTime, duration: duration)
 
             case 2:
-                // Guard against involuntary WebKit/YouTube pause right as iPhone enters background
-                if PlaybackService.shared.shouldAutoResumeInBackground {
-                    playerState = .playing
-                    PlaybackService.shared.attemptBackgroundAutoResume()
-                } else {
-                    playerState = .paused
-                    PlaybackService.shared.pause(userInitiated: true)
-                    PlaybackService.shared.updateProgress(currentTime: currentTime, duration: duration)
-                }
+                playerState = .paused
+                // Preserve whether pause came from user action vs external/WebKit pause
+                PlaybackService.shared.pause(userInitiated: PlaybackService.shared.isUserPaused || !PlaybackService.shared.isAppInBackground)
+                PlaybackService.shared.updateProgress(currentTime: currentTime, duration: duration)
 
             case 3:
                 playerState = .loading
@@ -206,10 +224,23 @@ final class PlayerViewModel: ObservableObject {
         case "onError":
             let errVal = (json["data"] as? Int) ?? (json["error"] as? Int)
             let code = errVal.map { String($0) } ?? "unknown"
+            PlaybackDiagnostics.shared.logPlayerEvent("YT.onError", source: "youtube_iframe", details: "code=\(code)")
             playerState = .error("Mã lỗi trình phát YouTube: \(code)")
 
         default:
             break
+        }
+    }
+
+    private static func describeYTState(_ code: Int) -> String {
+        switch code {
+        case -1: return "UNSTARTED"
+        case 0:  return "ENDED"
+        case 1:  return "PLAYING"
+        case 2:  return "PAUSED"
+        case 3:  return "BUFFERING"
+        case 5:  return "CUED"
+        default: return "CODE_\(code)"
         }
     }
 
@@ -224,26 +255,27 @@ final class PlayerViewModel: ObservableObject {
     func playPlayer() {
         playerState = .playing
         PlaybackService.shared.play(video: video)
-        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(false); if (window.player && typeof player.playVideo === 'function') { player.playVideo(); }")
+        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(false); if (window.player && typeof player.getPlayerState === 'function' && player.getPlayerState() !== 1 && player.getPlayerState() !== 3) { player.playVideo(); }")
     }
 
     func pausePlayer(userInitiated: Bool = true) {
         playerState = .paused
         PlaybackService.shared.pause(userInitiated: userInitiated)
         let pausedFlag = userInitiated ? "true" : "false"
-        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(\(pausedFlag)); if (window.player && typeof player.pauseVideo === 'function') { player.pauseVideo(); }")
+        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(\(pausedFlag)); if (window.player && typeof player.getPlayerState === 'function' && player.getPlayerState() === 1) { player.pauseVideo(); }")
     }
 
+    /// Pauses playback cleanly without destroying the underlying `WKWebView` / `YT.Player` singleton.
     func stopAndClosePlayer() {
-        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(true); if (window.player && typeof player.stopVideo === 'function') { player.stopVideo(); }")
-        playerState = .idle
+        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(true); if (window.player && typeof player.pauseVideo === 'function') { player.pauseVideo(); }")
+        playerState = .paused
         PlaybackService.shared.stop()
     }
 
     func restartVideo() {
         playerState = .playing
         PlaybackService.shared.play(video: video)
-        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(false); if (window.player && typeof player.seekTo === 'function') { player.seekTo(0, true); player.playVideo(); }")
+        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(false); if (window.player && typeof player.seekTo === 'function') { player.seekTo(0, true); if (player.getPlayerState() !== 1) { player.playVideo(); } }")
     }
 
     func seekTo(seconds: TimeInterval) {
@@ -259,12 +291,18 @@ final class PlayerViewModel: ObservableObject {
     }
 
     func switchTrack(to nextVideo: VideoItem) {
+        guard video.id != nextVideo.id else {
+            if !isPlaying {
+                playPlayer()
+            }
+            return
+        }
         video = nextVideo
         isFavorite = libraryRepo.isFavorite(videoId: nextVideo.id)
         playerState = .loading
         addToHistory()
         PlaybackService.shared.play(video: nextVideo)
-        sendJSCommand?("window.__ytSetUserPaused && window.__ytSetUserPaused(false); if (window.player && typeof player.loadVideoById === 'function') { player.loadVideoById('\(nextVideo.id)'); }")
+        sendJSCommand?("if (window.__ytLoadTrackIfNeeded) { window.__ytLoadTrackIfNeeded('\(nextVideo.id)'); } else if (window.player && typeof player.loadVideoById === 'function') { player.loadVideoById('\(nextVideo.id)'); }")
         Task {
             await loadFullDetailsIfNeeded()
         }

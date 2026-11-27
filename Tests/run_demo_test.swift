@@ -17,6 +17,7 @@ struct DemoTestSuite {
         }
     }
 
+    @MainActor
     static func main() {
         let startTime = CFAbsoluteTimeGetCurrent()
         print("======================================================================")
@@ -85,13 +86,34 @@ struct DemoTestSuite {
 
         let htmlAutoplay = playback.buildEmbedHTML(videoId: "dQw4w9WgXcQ", autoplay: true)
         assertTest(htmlAutoplay.contains("'autoplay': 1"), "Cấu hình Autoplay bật khi autoplay=true")
-        assertTest(htmlAutoplay.contains("window.__ytTriggerAutoplay()"), "Tự động kích hoạt playVideo() trong onPlayerReady cho Mobile WebKit")
+        assertTest(htmlAutoplay.contains("window.__ytTriggerAutoplay()"), "Tự động kích hoạt playVideo() có kiểm soát trong onPlayerReady")
         assertTest(htmlAutoplay.contains("https://lhh224.github.io"), "Cấu hình embedOrigin hợp lệ tránh lỗi 152-4 trên ESign")
-        assertTest(htmlAutoplay.contains("Object.defineProperty(document, 'hidden'") && htmlAutoplay.contains("return false"), "Ghi đè document.hidden luôn trả về false")
-        assertTest(htmlAutoplay.contains("Object.defineProperty(document, 'visibilityState'") && htmlAutoplay.contains("return 'visible'"), "Ghi đè document.visibilityState luôn trả về 'visible'")
-        assertTest(htmlAutoplay.contains("stopImmediatePropagation"), "Chặn lan truyền sự kiện visibilitychange bằng stopImmediatePropagation()")
-        assertTest(htmlAutoplay.contains("state === YT.PlayerState.PAUSED") && htmlAutoplay.contains("player.playVideo()"), "Tự động gọi lại player.playVideo() khi bị auto-pause trong nền")
-        assertTest(htmlAutoplay.contains("__ytSyncGuard") && htmlAutoplay.contains("target.tagName === 'VIDEO'"), "Bảo vệ trực tiếp thẻ <video> trong iframe con khi khóa màn hình")
+        assertTest(htmlAutoplay.contains("window.__ytLoadTrackIfNeeded") && htmlAutoplay.contains("currentLoadedVideoId === nextVideoId"), "Chống gọi dư thừa loadVideoById khi mở lại cùng video trên instance YT.Player duy nhất")
+        assertTest(htmlAutoplay.contains("lastAppliedMetaKey") && htmlAutoplay.contains("window.__ytUpdateMediaSession"), "Khử trùng lặp MediaSession metadata tránh tái đăng ký MRMediaRemote gây khựng khi quay lại app")
+        assertTest(htmlAutoplay.contains("visibilitychange") && htmlAutoplay.contains("pagehide") && htmlAutoplay.contains("pageshow") && htmlAutoplay.contains("onDiagnostic"), "Theo dõi thụ động visibilitychange/pagehide/pageshow qua kênh chẩn đoán onDiagnostic")
+        assertTest(!htmlAutoplay.contains("setPlaybackQualityRange") && !htmlAutoplay.contains("__ytSyncGuard"), "Loại bỏ hoàn toàn ép chất lượng và timer can thiệp gây xả buffer/khựng tiếng")
+
+        // Kiểm thử PlaybackDiagnostics & AppRouter single-instance lifecycle
+        PlaybackDiagnostics.shared.markLifecycle("unitTest.didEnterBackground", details: "isPlaying=true")
+        PlaybackDiagnostics.shared.logPlayerEvent("onStateChange:1", source: "yt_iframe", details: "t=42.5s")
+        assertTest(PlaybackDiagnostics.shared.recentEvents.last?.contains("dt_transition=") == true, "PlaybackDiagnostics ghi nhận độ trễ dt_transition từ lúc chuyển foreground/background")
+
+        let testRouter = AppRouter()
+        testRouter.presentPlayer(video: first, queue: mocks)
+        testRouter.closePlayer()
+        assertTest(!testRouter.isPlayerPresented && testRouter.activePlayerVideo != nil, "AppRouter ẩn trình phát mà không hủy instance WKWebView/YT.Player đang giữ")
+
+        var jsEvalCount = 0
+        playback.jsCommandExecutor = { _ in jsEvalCount += 1 }
+        playback.play(video: first)
+        playback.updateProgress(currentTime: 87.5, duration: 213.0)
+        playback.play(video: first) // gọi lại cùng bài hát khi chuyển trạng thái
+        assertTest(jsEvalCount == 1 && playback.currentTime == 87.5, "PlaybackService giữ nguyên vị trí phát 87.5s và không gửi trùng MediaSession JS khi phát cùng bài")
+        playback.pause(userInitiated: true)
+        playback.recordScenePhase("background")
+        playback.recordScenePhase("active")
+        assertTest(!playback.isPlaying && playback.isUserPaused, "Giữ nguyên trạng thái tạm dừng chủ động của người dùng qua chu kỳ background -> active")
+        playback.jsCommandExecutor = nil
 
         // Kiểm thử NowPlayingService & đồng bộ Lock Screen / SleepTimer
         assertTest(NowPlayingService.parseDurationSeconds(from: "4:15") == 255, "Chuyển đổi thời lượng 4:15 -> 255s cho Lock Screen")

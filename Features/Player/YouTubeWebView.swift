@@ -17,7 +17,6 @@ struct YouTubeWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
-        // Share pre-warmed HTTP3/TLS connection pool & persistent disk cache for instant stream start
         configuration.processPool = PlaybackService.sharedProcessPool
         configuration.websiteDataStore = .default()
         configuration.suppressesIncrementalRendering = false
@@ -27,19 +26,8 @@ struct YouTubeWebView: UIViewRepresentable {
         configuration.allowsPictureInPictureMediaPlayback = true
 
         let userContentController = WKUserContentController()
-
-        // Inject Page Visibility override into BOTH main frame and nested YouTube embed iframe
-        let visibilityUserScript = WKUserScript(
-            source: PlaybackService.visibilityOverrideScript,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: false
-        )
-        userContentController.addUserScript(visibilityUserScript)
         userContentController.add(context.coordinator, name: "ytPlayer")
         configuration.userContentController = userContentController
-
-        // Note: Do NOT attach URL regex content-blocking rules to the YouTube video stream WebView
-        // so googlevideo.com media segments stream with zero per-chunk filter overhead.
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.scrollView.isScrollEnabled = false
@@ -51,7 +39,7 @@ struct YouTubeWebView: UIViewRepresentable {
         #endif
 
         context.coordinator.webView = webView
-        context.coordinator.loadedHTML = html
+        context.coordinator.hasLoadedInitialHTML = true
 
         commandHandler? { [weak webView] js in
             if Thread.isMainThread {
@@ -63,14 +51,16 @@ struct YouTubeWebView: UIViewRepresentable {
             }
         }
 
+        PlaybackDiagnostics.shared.markLifecycle("wkWebView.initAndLoadInitialHTML")
         webView.loadHTMLString(html, baseURL: PlaybackService.embedBaseURL)
         return webView
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {
+        // Keep callback references fresh WITHOUT ever reloading HTML or recreating the iframe
         context.coordinator.parent = self
-        if context.coordinator.loadedHTML != html {
-            context.coordinator.loadedHTML = html
+        if !context.coordinator.hasLoadedInitialHTML {
+            context.coordinator.hasLoadedInitialHTML = true
             uiView.loadHTMLString(html, baseURL: PlaybackService.embedBaseURL)
         }
     }
@@ -78,7 +68,7 @@ struct YouTubeWebView: UIViewRepresentable {
     final class Coordinator: NSObject, WKScriptMessageHandler {
         var parent: YouTubeWebView
         weak var webView: WKWebView?
-        var loadedHTML: String = ""
+        var hasLoadedInitialHTML: Bool = false
 
         init(_ parent: YouTubeWebView) {
             self.parent = parent
@@ -115,18 +105,12 @@ struct YouTubeWebView: NSViewRepresentable {
         configuration.allowsAirPlayForMediaPlayback = true
 
         let userContentController = WKUserContentController()
-        let visibilityUserScript = WKUserScript(
-            source: PlaybackService.visibilityOverrideScript,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: false
-        )
-        userContentController.addUserScript(visibilityUserScript)
         userContentController.add(context.coordinator, name: "ytPlayer")
         configuration.userContentController = userContentController
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         context.coordinator.webView = webView
-        context.coordinator.loadedHTML = html
+        context.coordinator.hasLoadedInitialHTML = true
 
         commandHandler? { [weak webView] js in
             if Thread.isMainThread {
@@ -138,14 +122,15 @@ struct YouTubeWebView: NSViewRepresentable {
             }
         }
 
+        PlaybackDiagnostics.shared.markLifecycle("wkWebView.initAndLoadInitialHTML")
         webView.loadHTMLString(html, baseURL: PlaybackService.embedBaseURL)
         return webView
     }
 
     func updateNSView(_ nsView: WKWebView, context: Context) {
         context.coordinator.parent = self
-        if context.coordinator.loadedHTML != html {
-            context.coordinator.loadedHTML = html
+        if !context.coordinator.hasLoadedInitialHTML {
+            context.coordinator.hasLoadedInitialHTML = true
             nsView.loadHTMLString(html, baseURL: PlaybackService.embedBaseURL)
         }
     }
@@ -153,7 +138,7 @@ struct YouTubeWebView: NSViewRepresentable {
     final class Coordinator: NSObject, WKScriptMessageHandler {
         var parent: YouTubeWebView
         weak var webView: WKWebView?
-        var loadedHTML: String = ""
+        var hasLoadedInitialHTML: Bool = false
 
         init(_ parent: YouTubeWebView) {
             self.parent = parent

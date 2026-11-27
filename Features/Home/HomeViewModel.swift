@@ -56,16 +56,18 @@ final class HomeViewModel: ObservableObject {
 
         guard shouldReload else { return }
         activeLoadTask?.cancel()
-        activeLoadTask = Task { @MainActor [weak self] () -> Void in
-            await self?.performFeedLoad(repo: repo, forceRefresh: forceRefresh)
+        activeLoadTask = Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            await self.performFeedLoad(repo: repo, forceRefresh: forceRefresh)
         }
     }
 
     /// Kept compatible with pull-to-refresh (`await vm.loadTrending(repo: ..., forceRefresh: true)`).
     func loadTrending(repo: LibraryRepository? = nil, forceRefresh: Bool = false) async {
         activeLoadTask?.cancel()
-        let task = Task { @MainActor [weak self] () -> Void in
-            await self?.performFeedLoad(repo: repo, forceRefresh: forceRefresh)
+        let task: Task<Void, Never> = Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            await self.performFeedLoad(repo: repo, forceRefresh: forceRefresh)
         }
         activeLoadTask = task
         await task.value
