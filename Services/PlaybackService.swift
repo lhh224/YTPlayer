@@ -106,6 +106,8 @@ final class PlaybackService: ObservableObject {
 
     private(set) var isUserPaused: Bool = false
     private(set) var isAppInBackground: Bool = false
+    private(set) var isTransitioningToBackground: Bool = false
+    private var wasPlayingBeforeBackground: Bool = false
     private var wasPlayingBeforeInterruption: Bool = false
     private var hasRegisteredObservers: Bool = false
     private var isAudioSessionActive: Bool = false
@@ -338,10 +340,16 @@ final class PlaybackService: ObservableObject {
                     window.__ytUserPaused = Boolean(paused);
                 };
 
+                var pendingVideoIdBeforeReady = null;
+
                 // Load a different track only when videoId actually differs from the loaded track
                 window.__ytLoadTrackIfNeeded = function(nextVideoId) {
-                    if (!nextVideoId || !player) { return; }
+                    if (!nextVideoId) { return; }
                     window.__ytUserPaused = false;
+                    if (!player || typeof player.loadVideoById !== 'function') {
+                        pendingVideoIdBeforeReady = nextVideoId;
+                        return;
+                    }
                     if (currentLoadedVideoId === nextVideoId) {
                         var st = (typeof player.getPlayerState === 'function') ? player.getPlayerState() : -1;
                         if (st !== 1 && st !== 3 && typeof player.playVideo === 'function') {
@@ -350,20 +358,21 @@ final class PlaybackService: ObservableObject {
                         return;
                     }
                     currentLoadedVideoId = nextVideoId;
-                    if (typeof player.loadVideoById === 'function') {
-                        player.loadVideoById(nextVideoId);
-                    }
+                    player.loadVideoById(nextVideoId);
+                    window.__ytTriggerAutoplay();
                 };
 
-                // Single gentle autoplay kick on initial ready only if still idle/cued
+                // Gentle autoplay kick on ready/track switch ONLY if still idle (-1) or cued (5)
                 window.__ytTriggerAutoplay = function() {
-                    setTimeout(function() {
+                    var kickIfIdle = function() {
                         if (!player || typeof player.playVideo !== 'function' || window.__ytUserPaused) { return; }
                         var st = (typeof player.getPlayerState === 'function') ? player.getPlayerState() : -1;
                         if (st === 5 || st === -1) {
                             try { player.playVideo(); } catch (e) {}
                         }
-                    }, 180);
+                    };
+                    setTimeout(kickIfIdle, 180);
+                    setTimeout(kickIfIdle, 750);
                 };
 
                 // Passive lifecycle diagnostics (zero player mutations during transitions!)
@@ -436,6 +445,16 @@ final class PlaybackService: ObservableObject {
 
                 function onPlayerReady(event) {
                     installMediaSessionHandlers();
+                    if (pendingVideoIdBeforeReady && pendingVideoIdBeforeReady !== currentLoadedVideoId) {
+                        var queuedId = pendingVideoIdBeforeReady;
+                        pendingVideoIdBeforeReady = null;
+                        currentLoadedVideoId = queuedId;
+                        if (typeof player.loadVideoById === 'function') {
+                            player.loadVideoById(queuedId);
+                        }
+                    } else {
+                        pendingVideoIdBeforeReady = null;
+                    }
                     var dur = (player && typeof player.getDuration === 'function') ? (player.getDuration() || 0) : 0;
                     postToNative({
                         event: 'onReady',
@@ -722,10 +741,12 @@ final class PlaybackService: ObservableObject {
         #if os(iOS)
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [])
+            // CRITICAL: Keep `.mixWithOthers` so UIProcess NEVER steals exclusive audio focus
+            // from the out-of-process `WebKit.GPU` media daemon (which would cause infinite pauses).
+            try session.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
             try session.setActive(true)
             isAudioSessionActive = true
-            PlaybackDiagnostics.shared.markLifecycle("audioSession.activated", details: "category=playback, mode=default")
+            PlaybackDiagnostics.shared.markLifecycle("audioSession.activated", details: "category=playback, mode=moviePlayback, mixWithOthers=true")
         } catch {
             PlaybackDiagnostics.shared.markLifecycle("audioSession.error", details: error.localizedDescription)
         }
@@ -767,18 +788,44 @@ final class PlaybackService: ObservableObject {
         jsCommandExecutor?("if (window.__ytSetBackgroundState) { window.__ytSetBackgroundState(\(inBgLiteral), \(bgEnabledLiteral), \(userPausedLiteral)); }")
     }
 
+    private var shouldAutoResumeInBackground: Bool {
+        currentVideo != nil
+            && isAppInBackground
+            && isBackgroundPlaybackEnabled
+            && !isUserPaused
+            && (isPlaying || wasPlayingBeforeBackground)
+    }
+
+    /// Gently resumes playback ONLY if iOS WebKit's native HTMLMediaElement auto-paused
+    /// the video (`playerState === 2`) during screen lock / app switch. Does nothing if already playing (`=== 1`).
+    private func attemptBackgroundAutoResume() {
+        guard shouldAutoResumeInBackground else { return }
+        ensureAudioSessionConfiguredOnce()
+
+        let resumeOnlyIfPausedJS = "window.__ytSetUserPaused && window.__ytSetUserPaused(false); if (window.player && typeof player.getPlayerState === 'function' && player.getPlayerState() === 2) { player.playVideo(); }"
+        jsCommandExecutor?(resumeOnlyIfPausedJS)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self = self, self.shouldAutoResumeInBackground else { return }
+            self.jsCommandExecutor?(resumeOnlyIfPausedJS)
+        }
+    }
+
     private func handleWillResignActive() {
+        isTransitioningToBackground = true
+        wasPlayingBeforeBackground = isPlaying && !isUserPaused
         PlaybackDiagnostics.shared.markLifecycle(
             "uiApplication.willResignActive",
-            details: "isPlaying=\(isPlaying), userPaused=\(isUserPaused)"
+            details: "isPlaying=\(isPlaying), userPaused=\(isUserPaused), wasPlayingBeforeBg=\(wasPlayingBeforeBackground)"
         )
     }
 
     private func handleDidEnterBackground() {
         isAppInBackground = true
+        isTransitioningToBackground = false
         PlaybackDiagnostics.shared.markLifecycle(
             "uiApplication.didEnterBackground",
-            details: "isPlaying=\(isPlaying), userPaused=\(isUserPaused), bgEnabled=\(isBackgroundPlaybackEnabled)"
+            details: "isPlaying=\(isPlaying), userPaused=\(isUserPaused), wasPlayingBeforeBg=\(wasPlayingBeforeBackground), bgEnabled=\(isBackgroundPlaybackEnabled)"
         )
 
         guard currentVideo != nil else { return }
@@ -792,15 +839,17 @@ final class PlaybackService: ObservableObject {
             return
         }
 
-        guard isPlaying && !isUserPaused else { return }
+        guard !isUserPaused && (isPlaying || wasPlayingBeforeBackground) else { return }
 
-        forceReactivateAudioSession()
+        ensureAudioSessionConfiguredOnce()
         beginShortBackgroundTransitionTask()
         syncBackgroundFlagToWebView()
+        attemptBackgroundAutoResume()
     }
 
     private func handleWillEnterForeground() {
         isAppInBackground = false
+        isTransitioningToBackground = false
         PlaybackDiagnostics.shared.markLifecycle(
             "uiApplication.willEnterForeground",
             details: "isPlaying=\(isPlaying), userPaused=\(isUserPaused)"
@@ -811,6 +860,8 @@ final class PlaybackService: ObservableObject {
 
     private func handleDidBecomeActive() {
         isAppInBackground = false
+        isTransitioningToBackground = false
+        wasPlayingBeforeBackground = false
         syncBackgroundFlagToWebView()
     }
     #endif

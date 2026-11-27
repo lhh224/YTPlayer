@@ -208,8 +208,13 @@ final class PlayerViewModel: ObservableObject {
 
             case 2:
                 playerState = .paused
-                // Preserve whether pause came from user action vs external/WebKit pause
-                PlaybackService.shared.pause(userInitiated: PlaybackService.shared.isUserPaused || !PlaybackService.shared.isAppInBackground)
+                let isBackgroundPause = PlaybackService.shared.isAppInBackground || PlaybackService.shared.isTransitioningToBackground
+                if isBackgroundPause && PlaybackService.shared.isBackgroundPlaybackEnabled && !PlaybackService.shared.isUserPaused {
+                    // System/WebKit involuntary pause during screen lock or app switch: do NOT mark as userPaused!
+                    PlaybackService.shared.pause(userInitiated: false)
+                } else {
+                    PlaybackService.shared.pause(userInitiated: PlaybackService.shared.isUserPaused || !isBackgroundPause)
+                }
                 PlaybackService.shared.updateProgress(currentTime: currentTime, duration: duration)
 
             case 3:
