@@ -64,9 +64,9 @@ struct LoadingSkeletonView: View {
 struct VideoCardSkeleton: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // 16:9 Thumbnail placeholder with bottom-right duration badge
+            // Full-Width 16:9 Thumbnail placeholder with bottom-right duration badge
             ZStack(alignment: .bottomTrailing) {
-                RoundedRectangle(cornerRadius: 16)
+                Rectangle()
                     .fill(Color(red: 0x11 / 255.0, green: 0x11 / 255.0, blue: 0x13 / 255.0))
                     .aspectRatio(16 / 9, contentMode: .fit)
                     .shimmer()
@@ -77,7 +77,6 @@ struct VideoCardSkeleton: View {
                     .frame(width: 44, height: 18)
                     .padding(10)
             }
-            .padding(.horizontal, 16)
 
             // Info row: Avatar + Title lines + 3-dots menu placeholder
             HStack(alignment: .top, spacing: 12) {

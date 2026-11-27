@@ -51,3 +51,37 @@ struct YTPlayerApp: App {
         PlaybackService.shared.ensureAudioSessionConfiguredOnce()
     }
 }
+
+// MARK: - Orientation Manager (Portrait <-> Landscape Fullscreen)
+
+enum OrientationManager {
+    static func rotateToLandscape() {
+        #if os(iOS)
+        if #available(iOS 16.0, *) {
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                let prefs = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: .landscapeRight)
+                windowScene.requestGeometryUpdate(prefs) { _ in }
+                windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+            }
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
+            UIViewController.attemptRotationToDeviceOrientation()
+        }
+        #endif
+    }
+
+    static func rotateToPortrait() {
+        #if os(iOS)
+        if #available(iOS 16.0, *) {
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                let prefs = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: .portrait)
+                windowScene.requestGeometryUpdate(prefs) { _ in }
+                windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+            }
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+            UIViewController.attemptRotationToDeviceOrientation()
+        }
+        #endif
+    }
+}

@@ -29,6 +29,8 @@ struct PlayerView: View {
     @State private var scrubProgress: Double = 0
     @State private var isSubscribed = false
     @State private var copiedLinkToast = false
+    @State private var isManualFullscreen = false
+    @State private var isDeviceLandscape = false
 
     init(video: VideoItem, queue: [VideoItem] = []) {
         self.video = video
@@ -57,6 +59,25 @@ struct PlayerView: View {
         router.activePlayerVideo != nil && (!router.isPlayerPresented || router.isPlayerMinimized)
     }
 
+    private var isLandscapeFullscreen: Bool {
+        !isMinimized && vm.displayMode == .video && (isDeviceLandscape || isManualFullscreen || vm.isWebFullscreen)
+    }
+
+    private func enterLandscapeFullscreen() {
+        withAnimation(.easeInOut(duration: 0.22)) {
+            isManualFullscreen = true
+        }
+        OrientationManager.rotateToLandscape()
+    }
+
+    private func exitLandscapeFullscreen() {
+        withAnimation(.easeInOut(duration: 0.22)) {
+            isManualFullscreen = false
+            vm.isWebFullscreen = false
+        }
+        OrientationManager.rotateToPortrait()
+    }
+
     private var effectiveCurrentTime: TimeInterval {
         if isSeeking {
             let dur = playbackService.duration > 0 ? playbackService.duration : 1
@@ -71,13 +92,13 @@ struct PlayerView: View {
                 // OLED Black Background with subtle dynamic gradient in Music Mode
                 Color.black.ignoresSafeArea()
 
-                if vm.displayMode == .music {
+                if vm.displayMode == .music && !isLandscapeFullscreen {
                     musicDynamicBackground
                 }
             }
 
             VStack(spacing: 0) {
-                if !isMinimized {
+                if !isMinimized && !isLandscapeFullscreen {
                     topHeaderBar
                 }
 
@@ -93,16 +114,42 @@ struct PlayerView: View {
                             vm.registerJSBridge(executeJS)
                         }
                     )
-                    .aspectRatio(16 / 9, contentMode: .fit)
+                    .aspectRatio(isLandscapeFullscreen ? nil : (16 / 9), contentMode: .fit)
                     .frame(
-                        width: (!isMinimized && vm.displayMode == .video) ? nil : 160,
-                        height: (!isMinimized && vm.displayMode == .video) ? nil : 90
+                        maxWidth: (!isMinimized && vm.displayMode == .video) ? .infinity : 160,
+                        maxHeight: isLandscapeFullscreen ? .infinity : ((!isMinimized && vm.displayMode == .video) ? nil : 90)
                     )
-                    .cornerRadius((!isMinimized && vm.displayMode == .video) ? 14 : 0)
+                    .cornerRadius((!isMinimized && vm.displayMode == .video && !isLandscapeFullscreen) ? 14 : 0)
                     .clipped()
-                    .padding(.horizontal, (!isMinimized && vm.displayMode == .video) ? 12 : 0)
+                    .padding(.horizontal, (!isMinimized && vm.displayMode == .video && !isLandscapeFullscreen) ? 12 : 0)
                     .opacity((!isMinimized && vm.displayMode == .video) ? 1.0 : 0.02)
                     .allowsHitTesting(!isMinimized && vm.displayMode == .video)
+
+                    if isLandscapeFullscreen {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Button {
+                                    exitLandscapeFullscreen()
+                                } label: {
+                                    Image(systemName: "arrow.down.right.and.arrow.up.left")
+                                        .font(.system(size: 15, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .frame(width: 36, height: 36)
+                                        .background(Color.black.opacity(0.6))
+                                        .clipShape(Circle())
+                                        .overlay(
+                                            Circle().stroke(Color.white.opacity(0.22), lineWidth: 1)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .padding(.top, 14)
+                                .padding(.trailing, 18)
+                                .accessibilityLabel("Thoát toàn màn hình")
+                            }
+                            Spacer()
+                        }
+                    }
 
                     if !isMinimized && vm.displayMode == .music {
                         musicArtworkCard
@@ -110,10 +157,12 @@ struct PlayerView: View {
                     }
                 }
                 .frame(height: isMinimized ? 0 : nil)
+                .frame(maxHeight: isLandscapeFullscreen ? .infinity : nil)
                 .clipped()
+                .ignoresSafeArea(edges: isLandscapeFullscreen ? .all : [])
                 .animation(.spring(response: 0.42, dampingFraction: 0.84), value: vm.displayMode)
 
-                if !isMinimized {
+                if !isMinimized && !isLandscapeFullscreen {
                     if vm.displayMode == .music {
                         musicControlsSection
                             .transition(.opacity)
@@ -131,9 +180,21 @@ struct PlayerView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear {
+                        updateOrientationState(for: geo.size)
+                    }
+                    .onChange(of: geo.size) { newSize in
+                        updateOrientationState(for: newSize)
+                    }
+            }
+        )
         #if os(iOS)
         .navigationBarBackButtonHidden(true)
         .navigationBarHidden(true)
+        .statusBar(hidden: isLandscapeFullscreen)
         #endif
         .sheet(isPresented: $showUpNextSheet) {
             upNextSheetView
@@ -338,7 +399,23 @@ struct PlayerView: View {
         .buttonStyle(.plain)
     }
 
+    private func updateOrientationState(for size: CGSize) {
+        guard size.width > 0, size.height > 0 else { return }
+        let landscape = size.width > size.height
+        if isDeviceLandscape != landscape {
+            withAnimation(.easeInOut(duration: 0.22)) {
+                isDeviceLandscape = landscape
+                if !landscape {
+                    isManualFullscreen = false
+                }
+            }
+        }
+    }
+
     private func minimizeOrDismiss() {
+        if isLandscapeFullscreen {
+            exitLandscapeFullscreen()
+        }
         if router.activePlayerVideo != nil {
             router.minimizePlayer()
         } else {
@@ -347,6 +424,9 @@ struct PlayerView: View {
     }
 
     private func closePlayerCompletely() {
+        if isLandscapeFullscreen {
+            exitLandscapeFullscreen()
+        }
         vm.stopAndClosePlayer()
         if router.activePlayerVideo != nil {
             router.closePlayer()
@@ -713,6 +793,22 @@ struct PlayerView: View {
                 // Action Pills Row: [ 👍 24K ] [ + Danh sách phát ] [ ↗ Chia sẻ ] [ 🔗 Sao chép ]
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
+                        Button {
+                            enterLandscapeFullscreen()
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .foregroundColor(Color.ytRed)
+                                Text("Toàn màn hình")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(.white)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Color(red: 0x1C / 255.0, green: 0x1C / 255.0, blue: 0x1E / 255.0)))
+                        }
+                        .buttonStyle(.plain)
+
                         Button {
                             vm.toggleFavorite()
                         } label: {

@@ -218,6 +218,25 @@ final class PlaybackService: ObservableObject {
             }
             return origDocAdd.call(this, type, listener, options);
         };
+
+        var postFS = function(isFS) {
+            try {
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.ytPlayer) {
+                    window.webkit.messageHandlers.ytPlayer.postMessage(JSON.stringify({
+                        event: 'onFullscreenChange',
+                        isFullscreen: Boolean(isFS)
+                    }));
+                }
+            } catch (e) {}
+        };
+        document.addEventListener('webkitbeginfullscreen', function() { postFS(true); }, true);
+        document.addEventListener('webkitendfullscreen', function() { postFS(false); }, true);
+        document.addEventListener('fullscreenchange', function() {
+            postFS(Boolean(document.fullscreenElement || document.webkitFullscreenElement));
+        }, true);
+        document.addEventListener('webkitfullscreenchange', function() {
+            postFS(Boolean(document.fullscreenElement || document.webkitFullscreenElement));
+        }, true);
     })();
     """
 
@@ -404,6 +423,14 @@ final class PlaybackService: ObservableObject {
                     });
                 }, { passive: true });
 
+                // Notify native layer when YouTube iframe enters/exits fullscreen so iOS rotates to landscape
+                var notifyFullscreenChange = function() {
+                    var isFS = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+                    postToNative({ event: 'onFullscreenChange', isFullscreen: isFS });
+                };
+                document.addEventListener('fullscreenchange', notifyFullscreenChange, { passive: true });
+                document.addEventListener('webkitfullscreenchange', notifyFullscreenChange, { passive: true });
+
                 var tag = document.createElement('script');
                 tag.src = "https://www.youtube.com/iframe_api";
                 var firstScriptTag = document.getElementsByTagName('script')[0];
@@ -416,6 +443,7 @@ final class PlaybackService: ObservableObject {
                             'autoplay': \(autoplayValue),
                             'rel': 0,
                             'playsinline': 1,
+                            'fs': 1,
                             'enablejsapi': 1,
                             'modestbranding': 1,
                             'controls': 1,

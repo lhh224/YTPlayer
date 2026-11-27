@@ -6,13 +6,10 @@ struct VideoCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // 16:9 Thumbnail with 16pt corner radius & Duration badge
+            // Full-Width Edge-to-Edge 16:9 Thumbnail & Duration badge (zero side/letterbox bars)
             ZStack(alignment: .bottomTrailing) {
-                AsyncImageView(urlString: video.thumbnailURL)
-                    .aspectRatio(16 / 9, contentMode: .fill)
+                AsyncImageView(urlString: video.thumbnailURL, aspectRatio: 16.0 / 9.0, cornerRadius: 0)
                     .frame(maxWidth: .infinity)
-                    .cornerRadius(16)
-                    .clipped()
 
                 if !video.duration.isEmpty {
                     Text(video.duration)
@@ -25,7 +22,6 @@ struct VideoCardView: View {
                         .padding(10)
                 }
             }
-            .padding(.horizontal, 16)
 
             // Info row: Title, Channel + Views, 3-dots Menu
             HStack(alignment: .top, spacing: 8) {

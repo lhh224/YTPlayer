@@ -30,6 +30,7 @@ final class PlayerViewModel: ObservableObject {
     @Published var isShuffle: Bool = false
     @Published var isRepeat: Bool = false
     @Published var isAutoplayNext: Bool = true
+    @Published var isWebFullscreen: Bool = false
     @Published var volume: Double = 100
     @Published var showLyrics: Bool = false
 
@@ -151,6 +152,15 @@ final class PlayerViewModel: ObservableObject {
                 source: source,
                 details: "ytState=\(st), pos=\(String(format: "%.2f", currentTime))s"
             )
+
+        case "onFullscreenChange":
+            let isFS = (json["isFullscreen"] as? Bool) ?? false
+            isWebFullscreen = isFS
+            if isFS {
+                OrientationManager.rotateToLandscape()
+            } else {
+                OrientationManager.rotateToPortrait()
+            }
 
         case "onTimeUpdate":
             PlaybackService.shared.updateProgress(currentTime: currentTime, duration: duration)
